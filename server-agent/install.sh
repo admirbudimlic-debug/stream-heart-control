@@ -153,25 +153,26 @@ source "$INSTALL_DIR/venv/bin/activate"
 pip install --upgrade pip -q
 pip install supabase psutil -q
 
-# Copy agent script
-cat > "$INSTALL_DIR/agent.py" << 'AGENT_EOF'
-AGENT_EOF
+# Copy agent script from local directory (preferred) or download as fallback
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Download or copy the agent (we'll embed it)
-curl -sL "https://raw.githubusercontent.com/lovable/streaming-agent/main/agent.py" -o "$INSTALL_DIR/agent.py" 2>/dev/null || {
-    # If download fails, we need the agent.py to be present
-    if [ ! -f "$INSTALL_DIR/agent.py" ] || [ ! -s "$INSTALL_DIR/agent.py" ]; then
-        echo -e "${YELLOW}Copying local agent.py...${NC}"
-        # This assumes install.sh is in the same directory as agent.py
-        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        if [ -f "$SCRIPT_DIR/agent.py" ]; then
-            cp "$SCRIPT_DIR/agent.py" "$INSTALL_DIR/agent.py"
-        else
-            echo -e "${RED}Error: agent.py not found. Please place agent.py in $INSTALL_DIR${NC}"
-            exit 1
-        fi
-    fi
-}
+if [ -f "$SCRIPT_DIR/agent.py" ]; then
+    echo -e "${GREEN}Using local agent.py${NC}"
+    cp "$SCRIPT_DIR/agent.py" "$INSTALL_DIR/agent.py"
+else
+    echo -e "${YELLOW}Local agent.py not found, downloading...${NC}"
+    curl -sL "https://raw.githubusercontent.com/admirbudimlic-debug/stream-heart-control/main/server-agent/agent.py" -o "$INSTALL_DIR/agent.py" || {
+        echo -e "${RED}Error: Could not download agent.py${NC}"
+        echo -e "${RED}Please ensure agent.py is in the same directory as install.sh${NC}"
+        exit 1
+    }
+fi
+
+# Verify agent.py exists and is not empty
+if [ ! -s "$INSTALL_DIR/agent.py" ]; then
+    echo -e "${RED}Error: agent.py is empty or missing${NC}"
+    exit 1
+fi
 
 # Create environment file
 cat > "$INSTALL_DIR/.env" << EOF

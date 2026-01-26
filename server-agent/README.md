@@ -19,10 +19,25 @@ A Python-based agent that runs on Ubuntu servers to manage SRT-to-Multicast stre
 ## Quick Install
 
 1. Add a server in the Lovable dashboard and copy the token
-2. Run the installer:
+2. Clone and run the installer:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/lovable/streaming-agent/main/install.sh -o install.sh
+git clone https://github.com/admirbudimlic-debug/stream-heart-control.git
+cd stream-heart-control/server-agent
+chmod +x install.sh
+sudo ./install.sh --token YOUR_SERVER_TOKEN
+```
+
+**If you get "command not found"**, fix line endings first:
+```bash
+sed -i 's/\r$//' install.sh
+chmod +x install.sh
+sudo /bin/bash ./install.sh --token YOUR_SERVER_TOKEN
+```
+
+Alternatively, run from the repository root:
+```bash
+cd stream-heart-control
 chmod +x install.sh
 sudo ./install.sh --token YOUR_SERVER_TOKEN
 ```
