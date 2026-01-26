@@ -115,22 +115,32 @@ if ! command -v srt-live-transmit &> /dev/null; then
 fi
 echo -e "${GREEN}✓ srt-live-transmit installed: $(which srt-live-transmit)${NC}"
 
-# Step 4: Install TSDuck
-echo -e "${BLUE}[4/6] Installing TSDuck...${NC}"
+# Step 4: Install TSDuck (optional - for recording)
+echo -e "${BLUE}[4/6] Installing TSDuck (optional, for recording)...${NC}"
 if ! command -v tsp &> /dev/null; then
-    # Add TSDuck repository
-    curl -sL https://tsduck.io/download/tsduck.gpg | gpg --dearmor -o /usr/share/keyrings/tsduck.gpg
-    echo "deb [signed-by=/usr/share/keyrings/tsduck.gpg] https://tsduck.io/download/debian/ stable main" > /etc/apt/sources.list.d/tsduck.list
-    apt-get update -qq
-    apt-get install -y -qq tsduck || {
-        echo -e "${YELLOW}TSDuck apt install failed, downloading directly...${NC}"
+    # Try apt first (some Ubuntu versions have it in default repos)
+    apt-get install -y -qq tsduck 2>/dev/null || {
+        echo -e "${YELLOW}TSDuck not in apt, downloading from GitHub...${NC}"
         TSDUCK_VERSION="3.37-3840"
-        wget -q "https://github.com/tsduck/tsduck/releases/download/v3.37-3840/tsduck_${TSDUCK_VERSION}.ubuntu24_amd64.deb" -O /tmp/tsduck.deb
-        dpkg -i /tmp/tsduck.deb || apt-get install -f -y -qq
-        rm /tmp/tsduck.deb
+        
+        # Detect architecture
+        ARCH=$(dpkg --print-architecture)
+        if [ "$ARCH" = "amd64" ]; then
+            wget -q "https://github.com/tsduck/tsduck/releases/download/v3.37-3840/tsduck_${TSDUCK_VERSION}.ubuntu24_amd64.deb" -O /tmp/tsduck.deb && \
+            dpkg -i /tmp/tsduck.deb && \
+            apt-get install -f -y -qq
+            rm -f /tmp/tsduck.deb
+        else
+            echo -e "${YELLOW}TSDuck: unsupported architecture $ARCH, skipping${NC}"
+        fi
     }
 fi
-echo -e "${GREEN}✓ TSDuck installed: $(which tsp)${NC}"
+
+if command -v tsp &> /dev/null; then
+    echo -e "${GREEN}✓ TSDuck installed: $(which tsp)${NC}"
+else
+    echo -e "${YELLOW}⚠ TSDuck not installed (recording features unavailable)${NC}"
+fi
 
 # Step 5: Install FFmpeg
 echo -e "${BLUE}[5/6] Installing FFmpeg...${NC}"
