@@ -173,9 +173,10 @@ export default function Dashboard() {
                   </h3>
                   <AddChannelDialog
                     serverId={currentSelectedServer.id}
+                    serverIndex={servers.findIndex(s => s.id === currentSelectedServer.id) + 1}
                     onAdd={handleCreateChannel}
                     isLoading={createChannel.isPending}
-                    existingMulticastCount={channels.length}
+                    existingChannelCount={channels.length}
                   />
                 </div>
 

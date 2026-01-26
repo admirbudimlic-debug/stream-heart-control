@@ -15,6 +15,7 @@ import { Plus } from 'lucide-react';
 
 interface AddChannelDialogProps {
   serverId: string;
+  serverIndex: number; // 1-based server index for multicast address
   onAdd: (data: {
     server_id: string;
     name: string;
@@ -23,10 +24,10 @@ interface AddChannelDialogProps {
     multicast_output: string;
   }) => void;
   isLoading?: boolean;
-  existingMulticastCount: number;
+  existingChannelCount: number;
 }
 
-export function AddChannelDialog({ serverId, onAdd, isLoading, existingMulticastCount }: AddChannelDialogProps) {
+export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, existingChannelCount }: AddChannelDialogProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [srtInput, setSrtInput] = useState('');
@@ -35,11 +36,11 @@ export function AddChannelDialog({ serverId, onAdd, isLoading, existingMulticast
   // Generate folder name from channel name
   const folderName = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-  // Auto-generate next multicast address
+  // Auto-generate next multicast address: 239.1.[server_nr].[channel_nr]:5000
   useEffect(() => {
-    const nextIndex = existingMulticastCount + 1;
-    setMulticastOutput(`239.1.1.${nextIndex}:5000`);
-  }, [existingMulticastCount, open]);
+    const nextChannelIndex = existingChannelCount + 1;
+    setMulticastOutput(`239.1.${serverIndex}.${nextChannelIndex}:5000`);
+  }, [existingChannelCount, serverIndex, open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
