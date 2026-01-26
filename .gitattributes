@@ -1,0 +1,14 @@
+# Force Unix line endings for scripts and Python files
+*.sh text eol=lf
+*.py text eol=lf
+
+# Common text files
+*.md text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+
+# Ensure these are never treated as binary
+install.sh text eol=lf
