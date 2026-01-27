@@ -16,6 +16,7 @@ import shutil
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
+from collections import deque
 
 try:
     from supabase import create_client, Client
@@ -31,6 +32,8 @@ SERVER_TOKEN = os.environ.get("SERVER_TOKEN", "")
 
 HEARTBEAT_INTERVAL = 5  # seconds
 COMMAND_POLL_INTERVAL = 2  # seconds
+OUTPUT_BUFFER_SIZE = 50  # lines to keep in memory
+OUTPUT_LOG_INTERVAL = 10  # seconds between logging output
 
 
 @dataclass
@@ -41,6 +44,8 @@ class ChannelProcess:
     srt_input: str
     multicast_output: str
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    output_buffer: deque = field(default_factory=lambda: deque(maxlen=OUTPUT_BUFFER_SIZE))
+    last_output_log: float = field(default_factory=time.time)
 
 
 class StreamingAgent:
@@ -124,7 +129,8 @@ class StreamingAgent:
             "srt-live-transmit",
             srt_input,
             udp_output,
-            "-v"  # Verbose for logging
+            "-v",  # Verbose for logging
+            "-s", "1000"  # Stats interval in ms
         ]
         
         self.log("info", f"Starting channel: {' '.join(cmd)}", channel_id)
@@ -139,13 +145,15 @@ class StreamingAgent:
                 bufsize=1
             )
             
+            cp = ChannelProcess(
+                channel_id=channel_id,
+                process=process,
+                srt_input=srt_input,
+                multicast_output=multicast_output
+            )
+            
             with self.lock:
-                self.processes[channel_id] = ChannelProcess(
-                    channel_id=channel_id,
-                    process=process,
-                    srt_input=srt_input,
-                    multicast_output=multicast_output
-                )
+                self.processes[channel_id] = cp
             
             # Update channel status
             self.supabase.table("channels").update({
@@ -182,7 +190,7 @@ class StreamingAgent:
             return False
     
     def _monitor_process(self, channel_id: str):
-        """Monitor a channel process and update stats"""
+        """Monitor a channel process, capture output, and update stats"""
         while self.running:
             with self.lock:
                 if channel_id not in self.processes:
@@ -208,7 +216,9 @@ class StreamingAgent:
                     self.supabase.table("channels").update({
                         "status": "error",
                         "pid": None,
-                        "error_message": error_msg
+                        "error_message": error_msg,
+                        "last_output": output[-1024:] if output else None,
+                        "last_output_at": datetime.now(timezone.utc).isoformat()
                     }).eq("id", channel_id).execute()
                 else:
                     self.supabase.table("channels").update({
@@ -217,16 +227,59 @@ class StreamingAgent:
                     }).eq("id", channel_id).execute()
                 break
             
-            # Update uptime
-            uptime = int((datetime.now(timezone.utc) - cp.started_at).total_seconds())
+            # Read stdout line by line (non-blocking would be better but this works)
             try:
-                self.supabase.table("channels").update({
-                    "uptime_seconds": uptime
-                }).eq("id", channel_id).execute()
+                # Use select or non-blocking read for better performance
+                import select
+                if select.select([cp.process.stdout], [], [], 0.1)[0]:
+                    line = cp.process.stdout.readline()
+                    if line:
+                        line = line.strip()
+                        cp.output_buffer.append(line)
+                        
+                        # Parse and log important events
+                        self._parse_srt_output(line, channel_id)
             except:
                 pass
             
-            time.sleep(5)
+            # Update uptime and periodically save output
+            uptime = int((datetime.now(timezone.utc) - cp.started_at).total_seconds())
+            now = time.time()
+            
+            update_data = {"uptime_seconds": uptime}
+            
+            # Periodically save output buffer to database
+            if now - cp.last_output_log >= OUTPUT_LOG_INTERVAL:
+                output_text = "\n".join(cp.output_buffer)
+                if output_text:
+                    update_data["last_output"] = output_text[-1024:]  # Last 1KB
+                    update_data["last_output_at"] = datetime.now(timezone.utc).isoformat()
+                cp.last_output_log = now
+            
+            try:
+                self.supabase.table("channels").update(update_data).eq("id", channel_id).execute()
+            except:
+                pass
+            
+            time.sleep(1)
+    
+    def _parse_srt_output(self, line: str, channel_id: str):
+        """Parse srt-live-transmit output for important events"""
+        line_lower = line.lower()
+        
+        # Detect connection events
+        if "accepted" in line_lower or "connected" in line_lower:
+            self.log("info", f"SRT client connected: {line}", channel_id)
+        elif "disconnected" in line_lower or "broken" in line_lower:
+            self.log("warn", f"SRT connection issue: {line}", channel_id)
+        elif "error" in line_lower:
+            self.log("error", f"SRT error: {line}", channel_id)
+        elif "listening" in line_lower or "ready" in line_lower:
+            self.log("info", f"SRT ready: {line}", channel_id)
+        
+        # Parse statistics if present (srt-live-transmit with -s option)
+        if "mbps" in line_lower or "kbps" in line_lower:
+            self.log("debug", f"Stats: {line}", channel_id)
     
     def _stop_channel(self, channel_id: str, graceful: bool = True) -> bool:
         """Stop a running channel"""

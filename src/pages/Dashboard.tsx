@@ -8,10 +8,12 @@ import { AddServerDialog } from '@/components/dashboard/AddServerDialog';
 import { ChannelCard } from '@/components/dashboard/ChannelCard';
 import { AddChannelDialog } from '@/components/dashboard/AddChannelDialog';
 import { LogsPanel } from '@/components/dashboard/LogsPanel';
+import { ProcessPanel } from '@/components/dashboard/ProcessPanel';
+import { DiagnosticCommands } from '@/components/dashboard/DiagnosticCommands';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Server } from '@/types/streaming';
-import { Server as ServerIcon, Radio, ScrollText } from 'lucide-react';
+import { Server as ServerIcon, Radio, ScrollText, Activity, Terminal } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Dashboard() {
@@ -158,9 +160,17 @@ export default function Dashboard() {
                       <Radio className="h-3.5 w-3.5" />
                       Channels
                     </TabsTrigger>
+                    <TabsTrigger value="processes" className="gap-1.5">
+                      <Activity className="h-3.5 w-3.5" />
+                      Processes
+                    </TabsTrigger>
                     <TabsTrigger value="logs" className="gap-1.5">
                       <ScrollText className="h-3.5 w-3.5" />
                       Logs
+                    </TabsTrigger>
+                    <TabsTrigger value="diagnostics" className="gap-1.5">
+                      <Terminal className="h-3.5 w-3.5" />
+                      Diagnostics
                     </TabsTrigger>
                   </TabsList>
                 </div>
@@ -208,13 +218,38 @@ export default function Dashboard() {
                 )}
               </TabsContent>
 
+              <TabsContent value="processes" className="flex-1 overflow-hidden p-6 mt-0">
+                <Card className="h-full">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Running Processes</CardTitle>
+                  </CardHeader>
+                  <CardContent className="h-[calc(100%-3rem)]">
+                    <ProcessPanel channels={channels} isLoading={channelsLoading} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               <TabsContent value="logs" className="flex-1 overflow-hidden p-6 mt-0">
                 <Card className="h-full">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium">Server Logs</CardTitle>
                   </CardHeader>
                   <CardContent className="h-[calc(100%-3rem)]">
-                    <LogsPanel logs={logs} isLoading={logsLoading} />
+                    <LogsPanel logs={logs} channels={channels} isLoading={logsLoading} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="diagnostics" className="flex-1 overflow-hidden p-6 mt-0">
+                <Card className="h-full">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Diagnostic Commands</CardTitle>
+                  </CardHeader>
+                  <CardContent className="h-[calc(100%-3rem)]">
+                    <DiagnosticCommands 
+                      serverName={currentSelectedServer.name}
+                      multicastAddress={channels[0]?.multicast_output}
+                    />
                   </CardContent>
                 </Card>
               </TabsContent>

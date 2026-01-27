@@ -22,6 +22,8 @@ export type Database = {
           folder_name: string
           id: string
           input_bitrate: number | null
+          last_output: string | null
+          last_output_at: string | null
           multicast_output: string
           name: string
           output_bitrate: number | null
@@ -39,6 +41,8 @@ export type Database = {
           folder_name: string
           id?: string
           input_bitrate?: number | null
+          last_output?: string | null
+          last_output_at?: string | null
           multicast_output: string
           name: string
           output_bitrate?: number | null
@@ -56,6 +60,8 @@ export type Database = {
           folder_name?: string
           id?: string
           input_bitrate?: number | null
+          last_output?: string | null
+          last_output_at?: string | null
           multicast_output?: string
           name?: string
           output_bitrate?: number | null
