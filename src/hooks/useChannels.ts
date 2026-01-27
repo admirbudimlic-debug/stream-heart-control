@@ -21,7 +21,7 @@ export function useChannels(serverId?: string) {
       const { data, error } = await q.order('created_at', { ascending: true });
       
       if (error) throw error;
-      return data as Channel[];
+      return (data ?? []) as unknown as Channel[];
     },
   });
 
@@ -70,7 +70,7 @@ export function useCreateChannel() {
         .single();
       
       if (error) throw error;
-      return data as Channel;
+      return data as unknown as Channel;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['channels'] });
