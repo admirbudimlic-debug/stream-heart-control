@@ -58,16 +58,31 @@ export function ChannelCard({ channel, onStart, onStop, onDelete, isLoading }: C
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* PID & Multicast - Prominent when running */}
+        {isRunning && channel.pid && (
+          <div className="flex items-center justify-between rounded-md bg-success/10 p-2 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-success" />
+              <span className="font-medium text-success">PID {channel.pid}</span>
+            </div>
+            <code className="rounded bg-muted px-2 py-0.5 text-xs font-semibold">
+              {channel.multicast_output}
+            </code>
+          </div>
+        )}
+
         {/* Stream Info */}
         <div className="space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">SRT Input:</span>
             <code className="max-w-[200px] truncate text-xs">{channel.srt_input}</code>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Multicast:</span>
-            <code className="text-xs">{channel.multicast_output}</code>
-          </div>
+          {!isRunning && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Multicast:</span>
+              <code className="text-xs">{channel.multicast_output}</code>
+            </div>
+          )}
         </div>
 
         {/* Stats */}
