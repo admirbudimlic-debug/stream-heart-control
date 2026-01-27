@@ -31,6 +31,7 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [srtInput, setSrtInput] = useState('');
+  const [passphrase, setPassphrase] = useState('');
   const [multicastOutput, setMulticastOutput] = useState('');
 
   // Generate folder name from channel name
@@ -42,18 +43,27 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
     setMulticastOutput(`239.1.${serverIndex}.${nextChannelIndex}:5000`);
   }, [existingChannelCount, serverIndex, open]);
 
+  // Build the full SRT URL with passphrase if provided
+  const buildSrtUrl = (baseUrl: string, pass: string): string => {
+    if (!pass.trim()) return baseUrl;
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}passphrase=${encodeURIComponent(pass.trim())}`;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (name.trim() && srtInput.trim() && multicastOutput.trim()) {
+      const fullSrtUrl = buildSrtUrl(srtInput.trim(), passphrase);
       onAdd({
         server_id: serverId,
         name: name.trim(),
         folder_name: folderName || 'channel',
-        srt_input: srtInput.trim(),
+        srt_input: fullSrtUrl,
         multicast_output: multicastOutput.trim(),
       });
       setName('');
       setSrtInput('');
+      setPassphrase('');
       setOpen(false);
     }
   };
@@ -98,6 +108,22 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
                 value={srtInput}
                 onChange={(e) => setSrtInput(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                Base URL without passphrase
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="passphrase">Passphrase (Optional)</Label>
+              <Input
+                id="passphrase"
+                type="password"
+                placeholder="SRT encryption passphrase"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                10-79 characters for AES encryption
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="multicast-output">Multicast Output</Label>
