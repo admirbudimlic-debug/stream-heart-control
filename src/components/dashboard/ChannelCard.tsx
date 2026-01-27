@@ -1,8 +1,8 @@
-import { Channel } from '@/types/streaming';
+import { Channel, Recording } from '@/types/streaming';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play, Square, Trash2, Activity, Clock, AlertCircle, Video, Volume2, Info } from 'lucide-react';
+import { Play, Square, Trash2, Activity, Clock, AlertCircle, Video, Volume2, Info, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -10,16 +10,31 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { StartRecordingDialog } from './StartRecordingDialog';
 
 interface ChannelCardProps {
   channel: Channel;
   onStart: () => void;
   onStop: () => void;
   onDelete: () => void;
+  onStartRecording?: (filename: string) => void;
+  onStopRecording?: () => void;
+  activeRecording?: Recording | null;
   isLoading?: boolean;
+  isRecordingLoading?: boolean;
 }
 
-export function ChannelCard({ channel, onStart, onStop, onDelete, isLoading }: ChannelCardProps) {
+export function ChannelCard({ 
+  channel, 
+  onStart, 
+  onStop, 
+  onDelete, 
+  onStartRecording,
+  onStopRecording,
+  activeRecording,
+  isLoading,
+  isRecordingLoading
+}: ChannelCardProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'running':
@@ -53,6 +68,7 @@ export function ChannelCard({ channel, onStart, onStop, onDelete, isLoading }: C
   const isRunning = channel.status === 'running';
   const isTransitioning = channel.status === 'starting' || channel.status === 'stopping';
   const tsInfo = channel.ts_info;
+  const isRecording = !!activeRecording;
 
   return (
     <Card>
@@ -64,9 +80,17 @@ export function ChannelCard({ channel, onStart, onStop, onDelete, isLoading }: C
               <span className="text-xs text-muted-foreground">{tsInfo.service_name}</span>
             )}
           </div>
-          <Badge className={cn("text-xs", getStatusColor(channel.status))}>
-            {channel.status}
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            {isRecording && (
+              <Badge className="bg-destructive text-destructive-foreground gap-1">
+                <Circle className="h-2 w-2 fill-current animate-pulse" />
+                REC
+              </Badge>
+            )}
+            <Badge className={cn("text-xs", getStatusColor(channel.status))}>
+              {channel.status}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -79,6 +103,19 @@ export function ChannelCard({ channel, onStart, onStop, onDelete, isLoading }: C
             </div>
             <code className="rounded bg-muted px-2 py-0.5 text-xs font-semibold">
               {channel.multicast_output}
+            </code>
+          </div>
+        )}
+
+        {/* Active Recording Indicator */}
+        {isRecording && activeRecording && (
+          <div className="flex items-center justify-between rounded-md bg-destructive/10 p-2 text-sm">
+            <div className="flex items-center gap-2">
+              <Circle className="h-2 w-2 fill-destructive text-destructive animate-pulse" />
+              <span className="font-medium text-destructive">Recording</span>
+            </div>
+            <code className="rounded bg-muted px-2 py-0.5 text-xs">
+              {activeRecording.filename}
             </code>
           </div>
         )}
@@ -205,16 +242,41 @@ export function ChannelCard({ channel, onStart, onStop, onDelete, isLoading }: C
         {/* Actions */}
         <div className="flex items-center gap-2">
           {isRunning ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={onStop}
-              disabled={isLoading || isTransitioning}
-            >
-              <Square className="mr-1.5 h-3 w-3" />
-              Stop
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={onStop}
+                disabled={isLoading || isTransitioning}
+              >
+                <Square className="mr-1.5 h-3 w-3" />
+                Stop
+              </Button>
+              
+              {/* Recording Controls */}
+              {isRecording ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={onStopRecording}
+                  disabled={isRecordingLoading}
+                  className="gap-1.5"
+                >
+                  <Square className="h-3 w-3" />
+                  Stop Rec
+                </Button>
+              ) : (
+                onStartRecording && (
+                  <StartRecordingDialog
+                    channelName={channel.name}
+                    onStart={onStartRecording}
+                    isLoading={isRecordingLoading}
+                    disabled={isRecordingLoading}
+                  />
+                )
+              )}
+            </>
           ) : (
             <Button
               variant="default"
@@ -232,7 +294,7 @@ export function ChannelCard({ channel, onStart, onStop, onDelete, isLoading }: C
             size="sm"
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
             onClick={onDelete}
-            disabled={isLoading}
+            disabled={isLoading || isRecording}
           >
             <Trash2 className="h-4 w-4" />
           </Button>

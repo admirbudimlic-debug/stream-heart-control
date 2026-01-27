@@ -2,6 +2,14 @@ import { useState } from 'react';
 import { useServers, useCreateServer, useDeleteServer } from '@/hooks/useServers';
 import { useChannels, useCreateChannel, useDeleteChannel, useSendChannelCommand } from '@/hooks/useChannels';
 import { useServerLogs } from '@/hooks/useServerLogs';
+import { 
+  useServerRecordings, 
+  useActiveRecording, 
+  useStartRecording, 
+  useStopRecording, 
+  useRewrapRecording,
+  useDeleteRecording 
+} from '@/hooks/useRecordings';
 import { Header } from '@/components/dashboard/Header';
 import { ServerCard } from '@/components/dashboard/ServerCard';
 import { AddServerDialog } from '@/components/dashboard/AddServerDialog';
@@ -10,11 +18,12 @@ import { AddChannelDialog } from '@/components/dashboard/AddChannelDialog';
 import { LogsPanel } from '@/components/dashboard/LogsPanel';
 import { ProcessPanel } from '@/components/dashboard/ProcessPanel';
 import { DiagnosticCommands } from '@/components/dashboard/DiagnosticCommands';
+import { RecordingsPanel } from '@/components/dashboard/RecordingsPanel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Server } from '@/types/streaming';
-import { Server as ServerIcon, Radio, ScrollText, Activity, Terminal } from 'lucide-react';
+import { Server, Recording } from '@/types/streaming';
+import { Server as ServerIcon, Radio, ScrollText, Activity, Terminal, FileVideo } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Dashboard() {
@@ -34,6 +43,13 @@ export default function Dashboard() {
 
   // Logs for selected server
   const { data: logs = [], isLoading: logsLoading } = useServerLogs(selectedServer?.id);
+
+  // Recordings for selected server
+  const { data: recordings = [], isLoading: recordingsLoading } = useServerRecordings(selectedServer?.id);
+  const startRecording = useStartRecording();
+  const stopRecording = useStopRecording();
+  const rewrapRecording = useRewrapRecording();
+  const deleteRecording = useDeleteRecording();
 
   const handleCreateServer = async (name: string) => {
     try {
@@ -60,7 +76,7 @@ export default function Dashboard() {
 
   const handleSelectServer = (server: Server) => {
     setSelectedServer(server);
-    setActiveTab('channels'); // Auto-navigate to channels
+    setActiveTab('channels');
   };
 
   const handleCreateChannel = async (data: Parameters<typeof createChannel.mutateAsync>[0]) => {
@@ -107,6 +123,61 @@ export default function Dashboard() {
     }
   };
 
+  const handleStartRecording = async (channelId: string, serverId: string, filename: string) => {
+    try {
+      await startRecording.mutateAsync({
+        serverId,
+        channelId,
+        filename: `${filename}.ts`,
+      });
+      toast.success('Recording started');
+    } catch (error) {
+      toast.error('Failed to start recording');
+    }
+  };
+
+  const handleStopRecording = async (channelId: string, serverId: string, recordingId: string) => {
+    try {
+      await stopRecording.mutateAsync({
+        serverId,
+        channelId,
+        recordingId,
+      });
+      toast.success('Recording stopped');
+    } catch (error) {
+      toast.error('Failed to stop recording');
+    }
+  };
+
+  const handleRewrapRecording = async (recording: Recording, outputFilename: string) => {
+    const channel = channels.find(c => c.id === recording.channel_id);
+    if (!channel) {
+      toast.error('Channel not found');
+      return;
+    }
+    
+    try {
+      await rewrapRecording.mutateAsync({
+        serverId: channel.server_id,
+        channelId: recording.channel_id,
+        recordingId: recording.id,
+        outputFilename: `${outputFilename}.mp4`,
+      });
+      toast.success('Rewrap started');
+    } catch (error) {
+      toast.error('Failed to start rewrap');
+    }
+  };
+
+  const handleDeleteRecording = async (id: string) => {
+    try {
+      await deleteRecording.mutateAsync(id);
+      toast.success('Recording deleted');
+    } catch (error) {
+      toast.error('Failed to delete recording');
+    }
+  };
+
   // Update selected server reference when servers list updates
   const currentSelectedServer = selectedServer 
     ? servers.find(s => s.id === selectedServer.id) ?? selectedServer
@@ -121,6 +192,11 @@ export default function Dashboard() {
       default:
         return 'bg-muted text-muted-foreground';
     }
+  };
+
+  // Get active recording for each channel
+  const getActiveRecording = (channelId: string): Recording | undefined => {
+    return recordings.find(r => r.channel_id === channelId && r.status === 'recording');
   };
 
   return (
@@ -155,6 +231,10 @@ export default function Dashboard() {
               <TabsTrigger value="channels" className="gap-1.5" disabled={!currentSelectedServer}>
                 <Radio className="h-3.5 w-3.5" />
                 Channels
+              </TabsTrigger>
+              <TabsTrigger value="recordings" className="gap-1.5" disabled={!currentSelectedServer}>
+                <FileVideo className="h-3.5 w-3.5" />
+                Recordings
               </TabsTrigger>
               <TabsTrigger value="processes" className="gap-1.5" disabled={!currentSelectedServer}>
                 <Activity className="h-3.5 w-3.5" />
@@ -239,18 +319,44 @@ export default function Dashboard() {
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {channels.map((channel) => (
-                <ChannelCard
-                  key={channel.id}
-                  channel={channel}
-                  onStart={() => handleStartChannel(channel.id, channel.server_id)}
-                  onStop={() => handleStopChannel(channel.id, channel.server_id)}
-                  onDelete={() => handleDeleteChannel(channel.id)}
-                  isLoading={sendCommand.isPending}
-                />
-              ))}
+              {channels.map((channel) => {
+                const activeRecording = getActiveRecording(channel.id);
+                return (
+                  <ChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    onStart={() => handleStartChannel(channel.id, channel.server_id)}
+                    onStop={() => handleStopChannel(channel.id, channel.server_id)}
+                    onDelete={() => handleDeleteChannel(channel.id)}
+                    onStartRecording={(filename) => handleStartRecording(channel.id, channel.server_id, filename)}
+                    onStopRecording={activeRecording ? () => handleStopRecording(channel.id, channel.server_id, activeRecording.id) : undefined}
+                    activeRecording={activeRecording}
+                    isLoading={sendCommand.isPending}
+                    isRecordingLoading={startRecording.isPending || stopRecording.isPending}
+                  />
+                );
+              })}
             </div>
           )}
+        </TabsContent>
+
+        {/* Recordings Tab */}
+        <TabsContent value="recordings" className="flex-1 overflow-hidden p-6 mt-0">
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Recordings</CardTitle>
+            </CardHeader>
+            <CardContent className="h-[calc(100%-3rem)]">
+              <RecordingsPanel 
+                recordings={recordings}
+                channels={channels}
+                isLoading={recordingsLoading}
+                onRewrap={handleRewrapRecording}
+                onDelete={handleDeleteRecording}
+                rewrapLoading={rewrapRecording.isPending}
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Processes Tab */}
