@@ -115,23 +115,38 @@ if ! command -v srt-live-transmit &> /dev/null; then
 fi
 echo -e "${GREEN}✓ srt-live-transmit installed: $(which srt-live-transmit)${NC}"
 
-# Step 4: Install TSDuck (optional - for recording)
-echo -e "${BLUE}[4/6] Installing TSDuck (optional, for recording)...${NC}"
+# Step 4: Install TSDuck (optional - for TS analysis)
+echo -e "${BLUE}[4/6] Installing TSDuck (optional, for TS analysis)...${NC}"
 if ! command -v tsp &> /dev/null; then
-    # Try apt first (some Ubuntu versions have it in default repos)
+    # Try apt first (some Ubuntu versions have it)
     apt-get install -y -qq tsduck 2>/dev/null || {
         echo -e "${YELLOW}TSDuck not in apt, downloading from GitHub...${NC}"
-        TSDUCK_VERSION="3.37-3840"
+        TSDUCK_VERSION="3.43-4549"
         
-        # Detect architecture
+        # Detect architecture and Ubuntu version
         ARCH=$(dpkg --print-architecture)
+        UBUNTU_VERSION=$(lsb_release -rs 2>/dev/null | cut -d. -f1)
+        
+        # Default to ubuntu24 if can't detect
+        [ -z "$UBUNTU_VERSION" ] && UBUNTU_VERSION="24"
+        [ "$UBUNTU_VERSION" -lt 24 ] && UBUNTU_VERSION="24"
+        [ "$UBUNTU_VERSION" -gt 25 ] && UBUNTU_VERSION="25"
+        
         if [ "$ARCH" = "amd64" ]; then
-            wget -q "https://github.com/tsduck/tsduck/releases/download/v3.37-3840/tsduck_${TSDUCK_VERSION}.ubuntu24_amd64.deb" -O /tmp/tsduck.deb && \
+            DEB_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/tsduck_${TSDUCK_VERSION}.ubuntu${UBUNTU_VERSION}_amd64.deb"
+        elif [ "$ARCH" = "arm64" ]; then
+            DEB_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/tsduck_${TSDUCK_VERSION}.ubuntu${UBUNTU_VERSION}_arm64.deb"
+        else
+            echo -e "${YELLOW}TSDuck: unsupported architecture $ARCH, skipping${NC}"
+            DEB_URL=""
+        fi
+        
+        if [ -n "$DEB_URL" ]; then
+            echo -e "${BLUE}Downloading TSDuck for $ARCH (Ubuntu $UBUNTU_VERSION)...${NC}"
+            wget -q "$DEB_URL" -O /tmp/tsduck.deb && \
             dpkg -i /tmp/tsduck.deb && \
             apt-get install -f -y -qq
             rm -f /tmp/tsduck.deb
-        else
-            echo -e "${YELLOW}TSDuck: unsupported architecture $ARCH, skipping${NC}"
         fi
     }
 fi
@@ -139,7 +154,7 @@ fi
 if command -v tsp &> /dev/null; then
     echo -e "${GREEN}✓ TSDuck installed: $(which tsp)${NC}"
 else
-    echo -e "${YELLOW}⚠ TSDuck not installed (recording features unavailable)${NC}"
+    echo -e "${YELLOW}⚠ TSDuck not installed (TS analysis features unavailable)${NC}"
 fi
 
 # Step 5: Install FFmpeg
