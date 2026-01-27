@@ -123,12 +123,13 @@ export default function Dashboard() {
     }
   };
 
-  const handleStartRecording = async (channelId: string, serverId: string, filename: string) => {
+  const handleStartRecording = async (channelId: string, serverId: string, channelName: string, folderName: string) => {
     try {
       await startRecording.mutateAsync({
         serverId,
         channelId,
-        filename: `${filename}.ts`,
+        channelName,
+        folderName,
       });
       toast.success('Recording started');
     } catch (error) {
@@ -328,7 +329,7 @@ export default function Dashboard() {
                     onStart={() => handleStartChannel(channel.id, channel.server_id)}
                     onStop={() => handleStopChannel(channel.id, channel.server_id)}
                     onDelete={() => handleDeleteChannel(channel.id)}
-                    onStartRecording={(filename) => handleStartRecording(channel.id, channel.server_id, filename)}
+                    onStartRecording={() => handleStartRecording(channel.id, channel.server_id, channel.name, channel.folder_name)}
                     onStopRecording={activeRecording ? () => handleStopRecording(channel.id, channel.server_id, activeRecording.id) : undefined}
                     activeRecording={activeRecording}
                     isLoading={sendCommand.isPending}

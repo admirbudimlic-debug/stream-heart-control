@@ -2,7 +2,7 @@ import { Channel, Recording } from '@/types/streaming';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play, Square, Trash2, Activity, Clock, AlertCircle, Video, Volume2, Info, Circle } from 'lucide-react';
+import { Play, Square, Trash2, Activity, Clock, AlertCircle, Video, Volume2, Info, Circle, HardDrive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -10,14 +10,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { StartRecordingDialog } from './StartRecordingDialog';
+import { formatDistanceToNow } from 'date-fns';
 
 interface ChannelCardProps {
   channel: Channel;
   onStart: () => void;
   onStop: () => void;
   onDelete: () => void;
-  onStartRecording?: (filename: string) => void;
+  onStartRecording?: () => void;
   onStopRecording?: () => void;
   activeRecording?: Recording | null;
   isLoading?: boolean;
@@ -107,16 +107,32 @@ export function ChannelCard({
           </div>
         )}
 
-        {/* Active Recording Indicator */}
+        {/* Active Recording Indicator with Progress */}
         {isRecording && activeRecording && (
-          <div className="flex items-center justify-between rounded-md bg-destructive/10 p-2 text-sm">
-            <div className="flex items-center gap-2">
-              <Circle className="h-2 w-2 fill-destructive text-destructive animate-pulse" />
-              <span className="font-medium text-destructive">Recording</span>
+          <div className="rounded-md bg-destructive/10 p-2 space-y-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <Circle className="h-2 w-2 fill-destructive text-destructive animate-pulse" />
+                <span className="font-medium text-destructive">Recording</span>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                Started {formatDistanceToNow(new Date(activeRecording.started_at), { addSuffix: true })}
+              </span>
             </div>
-            <code className="rounded bg-muted px-2 py-0.5 text-xs">
-              {activeRecording.filename}
-            </code>
+            <div className="flex items-center justify-between text-xs">
+              <code className="rounded bg-muted px-2 py-0.5 truncate max-w-[200px]">
+                {activeRecording.filename}
+              </code>
+              {activeRecording.file_size_bytes && (
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <HardDrive className="h-3 w-3" />
+                  {(activeRecording.file_size_bytes / (1024 * 1024)).toFixed(1)} MB
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Saving to: <code className="text-[10px]">{activeRecording.filepath}</code>
+            </div>
           </div>
         )}
 
@@ -254,7 +270,7 @@ export function ChannelCard({
                 Stop
               </Button>
               
-              {/* Recording Controls */}
+              {/* Recording Controls - Simple toggle */}
               {isRecording ? (
                 <Button
                   variant="destructive"
@@ -268,12 +284,16 @@ export function ChannelCard({
                 </Button>
               ) : (
                 onStartRecording && (
-                  <StartRecordingDialog
-                    channelName={channel.name}
-                    onStart={onStartRecording}
-                    isLoading={isRecordingLoading}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onStartRecording}
                     disabled={isRecordingLoading}
-                  />
+                    className="gap-1.5"
+                  >
+                    <Circle className="h-3 w-3 fill-destructive text-destructive" />
+                    Record
+                  </Button>
                 )
               )}
             </>
