@@ -347,9 +347,29 @@ class StreamingAgent:
                     elif "mpeg2" in stream_type.lower():
                         codec = "MPEG-2"
                     
+                    # Extract video resolution
+                    width = pid_info.get("width")
+                    height = pid_info.get("height")
+                    resolution = None
+                    if width and height:
+                        # Format as standard resolution name or WxH
+                        if height == 2160:
+                            resolution = "4K"
+                        elif height == 1080:
+                            resolution = "1080p" if width >= 1920 else "1080i"
+                        elif height == 720:
+                            resolution = "720p"
+                        elif height == 576:
+                            resolution = "576i"
+                        elif height == 480:
+                            resolution = "480p" if width >= 640 else "480i"
+                        else:
+                            resolution = f"{width}x{height}"
+                    
                     ts_info["video"].append({
                         "pid": pid,
                         "codec": codec,
+                        "resolution": resolution,
                         "bitrate": bitrate
                     })
                     
