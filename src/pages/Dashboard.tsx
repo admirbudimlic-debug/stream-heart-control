@@ -12,12 +12,14 @@ import { ProcessPanel } from '@/components/dashboard/ProcessPanel';
 import { DiagnosticCommands } from '@/components/dashboard/DiagnosticCommands';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { Server } from '@/types/streaming';
 import { Server as ServerIcon, Radio, ScrollText, Activity, Terminal } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Dashboard() {
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
+  const [activeTab, setActiveTab] = useState('servers');
 
   // Server queries
   const { data: servers = [], isLoading: serversLoading } = useServers();
@@ -48,11 +50,17 @@ export default function Dashboard() {
       await deleteServer.mutateAsync(id);
       if (selectedServer?.id === id) {
         setSelectedServer(null);
+        setActiveTab('servers');
       }
       toast.success('Server deleted');
     } catch (error) {
       toast.error('Failed to delete server');
     }
+  };
+
+  const handleSelectServer = (server: Server) => {
+    setSelectedServer(server);
+    setActiveTab('channels'); // Auto-navigate to channels
   };
 
   const handleCreateChannel = async (data: Parameters<typeof createChannel.mutateAsync>[0]) => {
@@ -104,169 +112,186 @@ export default function Dashboard() {
     ? servers.find(s => s.id === selectedServer.id) ?? selectedServer
     : null;
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'online':
+        return 'bg-success text-success-foreground';
+      case 'connecting':
+        return 'bg-warning text-warning-foreground';
+      default:
+        return 'bg-muted text-muted-foreground';
+    }
+  };
+
   return (
     <div className="flex h-screen flex-col bg-background">
       <Header />
       
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Servers */}
-        <aside className="w-80 flex-shrink-0 border-r bg-card p-4 overflow-y-auto">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col overflow-hidden">
+        {/* Tab Header */}
+        <div className="border-b px-6 py-3">
+          <div className="flex items-center justify-between">
+            {/* Selected server indicator */}
+            <div className="flex items-center gap-3">
+              {currentSelectedServer ? (
+                <>
+                  <Badge className={getStatusColor(currentSelectedServer.status)}>
+                    {currentSelectedServer.name}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    {channels.length} channel{channels.length !== 1 ? 's' : ''}
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-muted-foreground">No server selected</span>
+              )}
+            </div>
+            
+            <TabsList>
+              <TabsTrigger value="servers" className="gap-1.5">
+                <ServerIcon className="h-3.5 w-3.5" />
+                Servers
+              </TabsTrigger>
+              <TabsTrigger value="channels" className="gap-1.5" disabled={!currentSelectedServer}>
+                <Radio className="h-3.5 w-3.5" />
+                Channels
+              </TabsTrigger>
+              <TabsTrigger value="processes" className="gap-1.5" disabled={!currentSelectedServer}>
+                <Activity className="h-3.5 w-3.5" />
+                Processes
+              </TabsTrigger>
+              <TabsTrigger value="logs" className="gap-1.5" disabled={!currentSelectedServer}>
+                <ScrollText className="h-3.5 w-3.5" />
+                Logs
+              </TabsTrigger>
+              <TabsTrigger value="diagnostics" className="gap-1.5" disabled={!currentSelectedServer}>
+                <Terminal className="h-3.5 w-3.5" />
+                Diagnostics
+              </TabsTrigger>
+            </TabsList>
+          </div>
+        </div>
+
+        {/* Servers Tab */}
+        <TabsContent value="servers" className="flex-1 overflow-y-auto p-6 mt-0">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <ServerIcon className="h-4 w-4" />
-              Servers
-            </h2>
+            <h3 className="text-sm font-medium text-muted-foreground">
+              Manage Streaming Servers
+            </h3>
             <AddServerDialog onAdd={handleCreateServer} isLoading={createServer.isPending} />
           </div>
 
           {serversLoading ? (
             <div className="text-center text-sm text-muted-foreground">Loading servers...</div>
           ) : servers.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-6 text-center">
-              <ServerIcon className="mx-auto h-8 w-8 text-muted-foreground" />
-              <p className="mt-2 text-sm text-muted-foreground">
-                No servers yet. Add your first server to get started.
-              </p>
-            </div>
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <ServerIcon className="h-12 w-12 text-muted-foreground" />
+                <h3 className="mt-4 text-lg font-medium">No servers configured</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Add your first server to get started
+                </p>
+              </CardContent>
+            </Card>
           ) : (
-            <div className="space-y-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {servers.map((server) => (
                 <ServerCard
                   key={server.id}
                   server={server}
                   onDelete={handleDeleteServer}
-                  onClick={() => setSelectedServer(server)}
+                  onClick={() => handleSelectServer(server)}
                   isSelected={currentSelectedServer?.id === server.id}
                 />
               ))}
             </div>
           )}
-        </aside>
+        </TabsContent>
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-hidden">
-          {currentSelectedServer ? (
-            <Tabs defaultValue="channels" className="flex h-full flex-col">
-              <div className="border-b px-6 py-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold">{currentSelectedServer.name}</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {channels.length} channel{channels.length !== 1 ? 's' : ''} configured
-                    </p>
-                  </div>
-                  <TabsList>
-                    <TabsTrigger value="channels" className="gap-1.5">
-                      <Radio className="h-3.5 w-3.5" />
-                      Channels
-                    </TabsTrigger>
-                    <TabsTrigger value="processes" className="gap-1.5">
-                      <Activity className="h-3.5 w-3.5" />
-                      Processes
-                    </TabsTrigger>
-                    <TabsTrigger value="logs" className="gap-1.5">
-                      <ScrollText className="h-3.5 w-3.5" />
-                      Logs
-                    </TabsTrigger>
-                    <TabsTrigger value="diagnostics" className="gap-1.5">
-                      <Terminal className="h-3.5 w-3.5" />
-                      Diagnostics
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-              </div>
+        {/* Channels Tab */}
+        <TabsContent value="channels" className="flex-1 overflow-y-auto p-6 mt-0">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-muted-foreground">
+              SRT to Multicast Channels
+            </h3>
+            {currentSelectedServer && (
+              <AddChannelDialog
+                serverId={currentSelectedServer.id}
+                serverIndex={servers.findIndex(s => s.id === currentSelectedServer.id) + 1}
+                onAdd={handleCreateChannel}
+                isLoading={createChannel.isPending}
+                existingChannelCount={channels.length}
+              />
+            )}
+          </div>
 
-              <TabsContent value="channels" className="flex-1 overflow-y-auto p-6 mt-0">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-muted-foreground">
-                    SRT to Multicast Channels
-                  </h3>
-                  <AddChannelDialog
-                    serverId={currentSelectedServer.id}
-                    serverIndex={servers.findIndex(s => s.id === currentSelectedServer.id) + 1}
-                    onAdd={handleCreateChannel}
-                    isLoading={createChannel.isPending}
-                    existingChannelCount={channels.length}
-                  />
-                </div>
-
-                {channelsLoading ? (
-                  <div className="text-center text-sm text-muted-foreground">Loading channels...</div>
-                ) : channels.length === 0 ? (
-                  <Card className="border-dashed">
-                    <CardContent className="flex flex-col items-center justify-center py-12">
-                      <Radio className="h-12 w-12 text-muted-foreground" />
-                      <h3 className="mt-4 text-lg font-medium">No channels configured</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Add your first channel to start streaming
-                      </p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {channels.map((channel) => (
-                      <ChannelCard
-                        key={channel.id}
-                        channel={channel}
-                        onStart={() => handleStartChannel(channel.id, channel.server_id)}
-                        onStop={() => handleStopChannel(channel.id, channel.server_id)}
-                        onDelete={() => handleDeleteChannel(channel.id)}
-                        isLoading={sendCommand.isPending}
-                      />
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="processes" className="flex-1 overflow-hidden p-6 mt-0">
-                <Card className="h-full">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Running Processes</CardTitle>
-                  </CardHeader>
-                  <CardContent className="h-[calc(100%-3rem)]">
-                    <ProcessPanel channels={channels} isLoading={channelsLoading} />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="logs" className="flex-1 overflow-hidden p-6 mt-0">
-                <Card className="h-full">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Server Logs</CardTitle>
-                  </CardHeader>
-                  <CardContent className="h-[calc(100%-3rem)]">
-                    <LogsPanel logs={logs} channels={channels} isLoading={logsLoading} />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="diagnostics" className="flex-1 overflow-hidden p-6 mt-0">
-                <Card className="h-full">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Diagnostic Commands</CardTitle>
-                  </CardHeader>
-                  <CardContent className="h-[calc(100%-3rem)]">
-                    <DiagnosticCommands 
-                      serverName={currentSelectedServer.name}
-                      multicastAddress={channels[0]?.multicast_output}
-                    />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <ServerIcon className="mx-auto h-16 w-16 text-muted-foreground/50" />
-                <h2 className="mt-4 text-xl font-medium">Select a Server</h2>
-                <p className="mt-1 text-muted-foreground">
-                  Choose a server from the left panel to manage its channels
+          {channelsLoading ? (
+            <div className="text-center text-sm text-muted-foreground">Loading channels...</div>
+          ) : channels.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Radio className="h-12 w-12 text-muted-foreground" />
+                <h3 className="mt-4 text-lg font-medium">No channels configured</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Add your first channel to start streaming
                 </p>
-              </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {channels.map((channel) => (
+                <ChannelCard
+                  key={channel.id}
+                  channel={channel}
+                  onStart={() => handleStartChannel(channel.id, channel.server_id)}
+                  onStop={() => handleStopChannel(channel.id, channel.server_id)}
+                  onDelete={() => handleDeleteChannel(channel.id)}
+                  isLoading={sendCommand.isPending}
+                />
+              ))}
             </div>
           )}
-        </main>
-      </div>
+        </TabsContent>
+
+        {/* Processes Tab */}
+        <TabsContent value="processes" className="flex-1 overflow-hidden p-6 mt-0">
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Running Processes</CardTitle>
+            </CardHeader>
+            <CardContent className="h-[calc(100%-3rem)]">
+              <ProcessPanel channels={channels} isLoading={channelsLoading} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Logs Tab */}
+        <TabsContent value="logs" className="flex-1 overflow-hidden p-6 mt-0">
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Server Logs</CardTitle>
+            </CardHeader>
+            <CardContent className="h-[calc(100%-3rem)]">
+              <LogsPanel logs={logs} channels={channels} isLoading={logsLoading} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Diagnostics Tab */}
+        <TabsContent value="diagnostics" className="flex-1 overflow-hidden p-6 mt-0">
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Diagnostic Commands</CardTitle>
+            </CardHeader>
+            <CardContent className="h-[calc(100%-3rem)]">
+              <DiagnosticCommands 
+                serverName={currentSelectedServer?.name ?? ''}
+                multicastAddress={channels[0]?.multicast_output}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
