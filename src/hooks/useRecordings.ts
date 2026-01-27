@@ -132,13 +132,20 @@ export function useStartRecording() {
   return useMutation({
     mutationFn: async ({ 
       serverId, 
-      channelId, 
-      filename 
+      channelId,
+      channelName,
+      folderName
     }: { 
       serverId: string; 
-      channelId: string; 
-      filename: string;
+      channelId: string;
+      channelName: string;
+      folderName: string;
     }) => {
+      // Auto-generate filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const sanitizedName = channelName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const filename = `${sanitizedName}_${timestamp}.ts`;
+      
       // Send command to start recording
       const { data, error } = await supabase
         .from('commands')
@@ -146,7 +153,10 @@ export function useStartRecording() {
           server_id: serverId,
           channel_id: channelId,
           command_type: 'start_recording',
-          payload: { filename } as unknown as Json,
+          payload: { 
+            filename,
+            folder_name: folderName 
+          } as unknown as Json,
         }])
         .select()
         .single();
