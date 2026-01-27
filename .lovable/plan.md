@@ -1,88 +1,132 @@
 
-# Add ARM64 Support for TSDuck Installation
+# Convert Servers Sidebar to Configuration Tab
 
-## Problem
-The installer fails to install TSDuck on ARM64 servers (AWS Graviton, Oracle Ampere, Raspberry Pi) because it only downloads the x86_64 (amd64) package.
+## Overview
+Transform the current two-panel layout (sidebar + main content) into a single unified tabbed interface. Servers will become a "Configuration" tab alongside Channels, Processes, Logs, and Diagnostics.
 
-## Solution
-Update `server-agent/install.sh` to detect ARM64 architecture and download the appropriate Ubuntu ARM64 .deb package from GitHub releases.
+## Current vs New Layout
 
-## Implementation
+```text
+CURRENT LAYOUT:
+┌─────────────────────────────────────────────┐
+│ Header                                       │
+├──────────────┬──────────────────────────────┤
+│  Servers     │  [Channels|Processes|Logs|...│
+│  Sidebar     │                              │
+│  (fixed)     │       Tab Content            │
+│              │                              │
+└──────────────┴──────────────────────────────┘
 
-### Update install.sh - TSDuck section (lines 118-143)
-
-Replace the current architecture detection with support for both amd64 and arm64:
-
-```bash
-# Step 4: Install TSDuck (optional - for TS analysis)
-echo -e "${BLUE}[4/6] Installing TSDuck (optional, for TS analysis)...${NC}"
-if ! command -v tsp &> /dev/null; then
-    # Try apt first (some Ubuntu versions have it)
-    apt-get install -y -qq tsduck 2>/dev/null || {
-        echo -e "${YELLOW}TSDuck not in apt, downloading from GitHub...${NC}"
-        TSDUCK_VERSION="3.43-4549"
-        
-        # Detect architecture and Ubuntu version
-        ARCH=$(dpkg --print-architecture)
-        UBUNTU_VERSION=$(lsb_release -rs 2>/dev/null | cut -d. -f1)
-        
-        # Default to ubuntu24 if can't detect
-        [ -z "$UBUNTU_VERSION" ] && UBUNTU_VERSION="24"
-        [ "$UBUNTU_VERSION" -lt 24 ] && UBUNTU_VERSION="24"
-        [ "$UBUNTU_VERSION" -gt 25 ] && UBUNTU_VERSION="25"
-        
-        if [ "$ARCH" = "amd64" ]; then
-            DEB_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/tsduck_${TSDUCK_VERSION}.ubuntu${UBUNTU_VERSION}_amd64.deb"
-        elif [ "$ARCH" = "arm64" ]; then
-            DEB_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/tsduck_${TSDUCK_VERSION}.ubuntu${UBUNTU_VERSION}_arm64.deb"
-        else
-            echo -e "${YELLOW}TSDuck: unsupported architecture $ARCH, skipping${NC}"
-            DEB_URL=""
-        fi
-        
-        if [ -n "$DEB_URL" ]; then
-            echo -e "${BLUE}Downloading TSDuck for $ARCH (Ubuntu $UBUNTU_VERSION)...${NC}"
-            wget -q "$DEB_URL" -O /tmp/tsduck.deb && \
-            dpkg -i /tmp/tsduck.deb && \
-            apt-get install -f -y -qq
-            rm -f /tmp/tsduck.deb
-        fi
-    }
-fi
-
-if command -v tsp &> /dev/null; then
-    echo -e "${GREEN}✓ TSDuck installed: $(which tsp)${NC}"
-else
-    echo -e "${YELLOW}⚠ TSDuck not installed (TS analysis features unavailable)${NC}"
-fi
+NEW LAYOUT:
+┌─────────────────────────────────────────────┐
+│ Header (optional - can be removed later)     │
+├─────────────────────────────────────────────┤
+│ [Servers|Channels|Processes|Logs|Diagnostics]│
+├─────────────────────────────────────────────┤
+│                                             │
+│              Tab Content                     │
+│                                             │
+└─────────────────────────────────────────────┘
 ```
 
-### Key Changes
-| Change | Description |
-|--------|-------------|
-| ARM64 support | Downloads `arm64` package when architecture is detected |
-| Version update | Uses TSDuck 3.43-4549 (latest with ARM64 support) |
-| Ubuntu version detection | Automatically selects ubuntu24 or ubuntu25 package |
-| Better logging | Shows which architecture and Ubuntu version is being used |
+## Implementation Details
 
-## Immediate Workaround
+### 1. Restructure Dashboard.tsx Layout
+- Remove the fixed left sidebar (`<aside>`)
+- Move Servers tab trigger into the main TabsList
+- Add a new "Servers" tab that shows server selection/management
+- Keep server selection state to filter channels/logs appropriately
 
-You can install TSDuck manually on your ARM64 server right now:
+### 2. New "Servers" Tab Content
+Create a new TabsContent for servers that includes:
+- Server cards in a responsive grid layout (similar to channels)
+- Add Server dialog button
+- Server selection with visual indicator
+- Quick access to server token
 
-```bash
-# Download and install TSDuck for ARM64 Ubuntu 24
-wget -q "https://github.com/tsduck/tsduck/releases/download/v3.43-4549/tsduck_3.43-4549.ubuntu24_arm64.deb" -O /tmp/tsduck.deb
-sudo dpkg -i /tmp/tsduck.deb
-sudo apt-get install -f -y
-rm /tmp/tsduck.deb
+### 3. Update Tab Navigation Flow
+- **Servers tab**: Select/manage servers (like current sidebar)
+- **Channels tab**: Shows channels for selected server
+- **Processes tab**: Shows running processes for selected server
+- **Logs tab**: Shows logs for selected server
+- **Diagnostics tab**: Shows diagnostic commands
 
-# Verify installation
-tsp --version
+### 4. Server Selection Indicator
+When a server is selected, show an indicator in the header area or as a persistent badge so users know which server context they're viewing.
 
-# Restart the agent to enable TS analysis
-sudo systemctl restart lovable-agent
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/pages/Dashboard.tsx` | Remove sidebar, add Servers tab, restructure layout |
+
+## Technical Implementation
+
+```typescript
+// New tab structure in Dashboard.tsx
+<Tabs defaultValue="servers" className="flex h-full flex-col">
+  <div className="border-b px-6 py-3">
+    <div className="flex items-center justify-between">
+      {/* Selected server indicator */}
+      {currentSelectedServer && (
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{currentSelectedServer.name}</Badge>
+          <span className="text-sm text-muted-foreground">
+            {channels.length} channels
+          </span>
+        </div>
+      )}
+      
+      <TabsList>
+        <TabsTrigger value="servers">
+          <ServerIcon /> Servers
+        </TabsTrigger>
+        <TabsTrigger value="channels" disabled={!currentSelectedServer}>
+          <Radio /> Channels
+        </TabsTrigger>
+        <TabsTrigger value="processes" disabled={!currentSelectedServer}>
+          <Activity /> Processes
+        </TabsTrigger>
+        <TabsTrigger value="logs" disabled={!currentSelectedServer}>
+          <ScrollText /> Logs
+        </TabsTrigger>
+        <TabsTrigger value="diagnostics" disabled={!currentSelectedServer}>
+          <Terminal /> Diagnostics
+        </TabsTrigger>
+      </TabsList>
+    </div>
+  </div>
+
+  {/* Servers Tab - replaces sidebar */}
+  <TabsContent value="servers">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {servers.map(server => (
+        <ServerCard 
+          key={server.id}
+          server={server}
+          onSelect={() => {
+            setSelectedServer(server);
+            // Auto-switch to channels tab after selection
+          }}
+        />
+      ))}
+    </div>
+  </TabsContent>
+
+  {/* Other tabs remain similar */}
+</Tabs>
 ```
 
-## After Implementation
+## UX Considerations
 
-Once you approve this plan, pull the updated installer and the ARM64 package will be downloaded automatically on future installations. For your current server, use the manual workaround above.
+1. **Auto-navigate**: When selecting a server in the Servers tab, automatically switch to Channels tab
+2. **Disabled states**: Disable Channels/Processes/Logs/Diagnostics tabs when no server is selected
+3. **Selected server badge**: Show the selected server name persistently so users always know their context
+4. **Empty state**: Guide users to select a server first if they try to access other tabs without selection
+
+## Benefits for Future Embedding
+
+- Single container with no fixed sidebars
+- Full-width layout works better in iframes or embedded contexts
+- Tab-based navigation is more flexible for integration
+- Header can easily be removed or replaced when embedding
