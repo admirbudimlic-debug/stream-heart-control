@@ -19,6 +19,30 @@ export interface Server {
   updated_at: string;
 }
 
+export interface TsVideoInfo {
+  pid: number;
+  codec: string;
+  resolution?: string;
+  bitrate?: number;
+}
+
+export interface TsAudioInfo {
+  pid: number;
+  codec: string;
+  language?: string;
+  bitrate?: number;
+}
+
+export interface TsInfo {
+  service_name?: string;
+  provider?: string;
+  pmt_pid?: number;
+  pcr_pid?: number;
+  video: TsVideoInfo[];
+  audio: TsAudioInfo[];
+  total_bitrate?: number;
+}
+
 export interface Channel {
   id: string;
   server_id: string;
@@ -33,6 +57,8 @@ export interface Channel {
   uptime_seconds: number | null;
   dropped_packets: number | null;
   error_message: string | null;
+  ts_info: TsInfo | null;
+  ts_analyzed_at: string | null;
   created_at: string;
   updated_at: string;
   server?: Server;

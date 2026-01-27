@@ -2,8 +2,14 @@ import { Channel } from '@/types/streaming';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play, Square, Trash2, Activity, Clock, AlertCircle } from 'lucide-react';
+import { Play, Square, Trash2, Activity, Clock, AlertCircle, Video, Volume2, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface ChannelCardProps {
   channel: Channel;
@@ -46,24 +52,30 @@ export function ChannelCard({ channel, onStart, onStop, onDelete, isLoading }: C
 
   const isRunning = channel.status === 'running';
   const isTransitioning = channel.status === 'starting' || channel.status === 'stopping';
+  const tsInfo = channel.ts_info;
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-medium">{channel.name}</CardTitle>
+          <div className="flex flex-col">
+            <CardTitle className="text-base font-medium">{channel.name}</CardTitle>
+            {tsInfo?.service_name && (
+              <span className="text-xs text-muted-foreground">{tsInfo.service_name}</span>
+            )}
+          </div>
           <Badge className={cn("text-xs", getStatusColor(channel.status))}>
             {channel.status}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* PID & Multicast - Prominent when running */}
-        {isRunning && channel.pid && (
+        {/* Multicast Output - Always visible prominently when running */}
+        {isRunning && (
           <div className="flex items-center justify-between rounded-md bg-success/10 p-2 text-sm">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 animate-pulse rounded-full bg-success" />
-              <span className="font-medium text-success">PID {channel.pid}</span>
+              <span className="font-medium text-success">LIVE</span>
             </div>
             <code className="rounded bg-muted px-2 py-0.5 text-xs font-semibold">
               {channel.multicast_output}
@@ -71,19 +83,92 @@ export function ChannelCard({ channel, onStart, onStop, onDelete, isLoading }: C
           </div>
         )}
 
-        {/* Stream Info */}
-        <div className="space-y-1 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">SRT Input:</span>
-            <code className="max-w-[200px] truncate text-xs">{channel.srt_input}</code>
-          </div>
-          {!isRunning && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Multicast:</span>
-              <code className="text-xs">{channel.multicast_output}</code>
+        {/* TS Stream PIDs - Video/Audio when running */}
+        {isRunning && tsInfo && (tsInfo.video?.length > 0 || tsInfo.audio?.length > 0) && (
+          <div className="rounded-md border bg-card p-2 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Transport Stream PIDs</span>
+              {tsInfo.provider && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Provider: {tsInfo.provider}</p>
+                      {tsInfo.pmt_pid && <p>PMT PID: {tsInfo.pmt_pid}</p>}
+                      {tsInfo.pcr_pid && <p>PCR PID: {tsInfo.pcr_pid}</p>}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </div>
-          )}
-        </div>
+            
+            {/* Video PIDs */}
+            {tsInfo.video?.map((v, i) => (
+              <div key={`video-${i}`} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <Video className="h-3 w-3 text-blue-500" />
+                  <span className="font-medium">Video</span>
+                  <Badge variant="outline" className="h-4 px-1 text-[10px] font-mono">
+                    PID {v.pid}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <span>{v.codec}</span>
+                  {v.resolution && <span>• {v.resolution}</span>}
+                  {v.bitrate && <span>• {formatBitrate(v.bitrate)}</span>}
+                </div>
+              </div>
+            ))}
+            
+            {/* Audio PIDs */}
+            {tsInfo.audio?.map((a, i) => (
+              <div key={`audio-${i}`} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <Volume2 className="h-3 w-3 text-green-500" />
+                  <span className="font-medium">Audio</span>
+                  <Badge variant="outline" className="h-4 px-1 text-[10px] font-mono">
+                    PID {a.pid}
+                  </Badge>
+                  {a.language && (
+                    <Badge variant="secondary" className="h-4 px-1 text-[10px] uppercase">
+                      {a.language}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <span>{a.codec}</span>
+                  {a.bitrate && <span>• {formatBitrate(a.bitrate)}</span>}
+                </div>
+              </div>
+            ))}
+            
+            {/* Total Bitrate */}
+            {tsInfo.total_bitrate && (
+              <div className="flex items-center justify-between text-xs pt-1 border-t">
+                <span className="text-muted-foreground">Total Bitrate</span>
+                <span className="font-mono font-medium">{formatBitrate(tsInfo.total_bitrate)}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Stream Info (when not running or no TS info yet) */}
+        {(!isRunning || !tsInfo) && (
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">SRT Input:</span>
+              <code className="max-w-[200px] truncate text-xs">{channel.srt_input}</code>
+            </div>
+            {!isRunning && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Multicast:</span>
+                <code className="text-xs">{channel.multicast_output}</code>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-2 rounded-md bg-muted/50 p-2 text-sm">

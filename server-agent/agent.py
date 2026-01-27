@@ -34,6 +34,7 @@ HEARTBEAT_INTERVAL = 5  # seconds
 COMMAND_POLL_INTERVAL = 2  # seconds
 OUTPUT_BUFFER_SIZE = 50  # lines to keep in memory
 OUTPUT_LOG_INTERVAL = 10  # seconds between logging output
+TS_ANALYZE_INTERVAL = 30  # seconds between TS stream analysis
 
 
 @dataclass
@@ -46,6 +47,7 @@ class ChannelProcess:
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     output_buffer: deque = field(default_factory=lambda: deque(maxlen=OUTPUT_BUFFER_SIZE))
     last_output_log: float = field(default_factory=time.time)
+    last_ts_analyze: float = field(default_factory=lambda: 0.0)
 
 
 class StreamingAgent:
@@ -256,6 +258,14 @@ class StreamingAgent:
                     update_data["last_output_at"] = datetime.now(timezone.utc).isoformat()
                 cp.last_output_log = now
             
+            # Periodically analyze TS stream for PIDs
+            if now - cp.last_ts_analyze >= TS_ANALYZE_INTERVAL:
+                ts_info = self._analyze_ts_stream(cp.multicast_output)
+                if ts_info:
+                    update_data["ts_info"] = ts_info
+                    update_data["ts_analyzed_at"] = datetime.now(timezone.utc).isoformat()
+                cp.last_ts_analyze = now
+            
             try:
                 self.supabase.table("channels").update(update_data).eq("id", channel_id).execute()
             except:
@@ -280,6 +290,107 @@ class StreamingAgent:
         # Parse statistics if present (srt-live-transmit with -s option)
         if "mbps" in line_lower or "kbps" in line_lower:
             self.log("debug", f"Stats: {line}", channel_id)
+    
+    def _analyze_ts_stream(self, multicast_addr: str) -> Optional[Dict[str, Any]]:
+        """Analyze TS stream using TSDuck to get PIDs and service info"""
+        if not shutil.which("tsanalyze"):
+            return None
+        
+        try:
+            # Run tsanalyze on the multicast stream with a timeout
+            # Format: udp://239.1.x.x:5000
+            udp_url = f"udp://{multicast_addr}"
+            
+            result = subprocess.run(
+                ["tsanalyze", "-i", udp_url, "--json"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                return None
+            
+            # Parse JSON output
+            data = json.loads(result.stdout)
+            
+            ts_info = {
+                "video": [],
+                "audio": [],
+                "service_name": None,
+                "provider": None,
+                "pmt_pid": None,
+                "pcr_pid": None,
+                "total_bitrate": None
+            }
+            
+            # Extract service info
+            services = data.get("services", {})
+            for svc_id, svc in services.items():
+                ts_info["service_name"] = svc.get("name")
+                ts_info["provider"] = svc.get("provider")
+                ts_info["pmt_pid"] = svc.get("pmt-pid")
+                break  # Take first service
+            
+            # Extract PID info
+            pids = data.get("pids", {})
+            for pid_str, pid_info in pids.items():
+                pid = int(pid_str)
+                stream_type = pid_info.get("stream-type", "")
+                bitrate = pid_info.get("bitrate")
+                
+                # Video streams
+                if "video" in stream_type.lower() or "avc" in stream_type.lower() or "hevc" in stream_type.lower():
+                    codec = "H.264"
+                    if "hevc" in stream_type.lower() or "h.265" in stream_type.lower():
+                        codec = "H.265"
+                    elif "mpeg2" in stream_type.lower():
+                        codec = "MPEG-2"
+                    
+                    ts_info["video"].append({
+                        "pid": pid,
+                        "codec": codec,
+                        "bitrate": bitrate
+                    })
+                    
+                    # First video is typically PCR
+                    if not ts_info["pcr_pid"]:
+                        ts_info["pcr_pid"] = pid
+                
+                # Audio streams
+                elif "audio" in stream_type.lower() or "aac" in stream_type.lower() or "ac3" in stream_type.lower() or "mp2" in stream_type.lower():
+                    codec = "AAC"
+                    if "ac3" in stream_type.lower() or "ac-3" in stream_type.lower():
+                        codec = "AC-3"
+                    elif "eac3" in stream_type.lower() or "e-ac-3" in stream_type.lower():
+                        codec = "E-AC-3"
+                    elif "mp2" in stream_type.lower() or "mpeg" in stream_type.lower():
+                        codec = "MPEG Audio"
+                    
+                    lang = pid_info.get("language")
+                    
+                    ts_info["audio"].append({
+                        "pid": pid,
+                        "codec": codec,
+                        "language": lang,
+                        "bitrate": bitrate
+                    })
+            
+            # Get total bitrate
+            ts_info["total_bitrate"] = data.get("ts-bitrate")
+            
+            self.log("debug", f"TS analysis: {json.dumps(ts_info)}")
+            return ts_info
+            
+        except subprocess.TimeoutExpired:
+            self.log("debug", "TS analysis timed out")
+            return None
+        except json.JSONDecodeError:
+            self.log("debug", "Failed to parse TS analysis output")
+            return None
+        except Exception as e:
+            self.log("debug", f"TS analysis failed: {e}")
+            return None
     
     def _stop_channel(self, channel_id: str, graceful: bool = True) -> bool:
         """Stop a running channel"""

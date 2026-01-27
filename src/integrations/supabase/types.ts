@@ -31,6 +31,8 @@ export type Database = {
           server_id: string
           srt_input: string
           status: Database["public"]["Enums"]["channel_status"]
+          ts_analyzed_at: string | null
+          ts_info: Json | null
           updated_at: string
           uptime_seconds: number | null
         }
@@ -50,6 +52,8 @@ export type Database = {
           server_id: string
           srt_input: string
           status?: Database["public"]["Enums"]["channel_status"]
+          ts_analyzed_at?: string | null
+          ts_info?: Json | null
           updated_at?: string
           uptime_seconds?: number | null
         }
@@ -69,6 +73,8 @@ export type Database = {
           server_id?: string
           srt_input?: string
           status?: Database["public"]["Enums"]["channel_status"]
+          ts_analyzed_at?: string | null
+          ts_info?: Json | null
           updated_at?: string
           uptime_seconds?: number | null
         }
