@@ -1,123 +1,88 @@
 
-# Enhanced Process Monitoring & Debugging
+# Add ARM64 Support for TSDuck Installation
 
-## Goal
-Add detailed process visibility to help debug SRT and multicast issues directly from the dashboard.
+## Problem
+The installer fails to install TSDuck on ARM64 servers (AWS Graviton, Oracle Ampere, Raspberry Pi) because it only downloads the x86_64 (amd64) package.
+
+## Solution
+Update `server-agent/install.sh` to detect ARM64 architecture and download the appropriate Ubuntu ARM64 .deb package from GitHub releases.
 
 ## Implementation
 
-### 1. Enhanced Logs Panel with Filtering
-**File:** `src/components/dashboard/LogsPanel.tsx`
+### Update install.sh - TSDuck section (lines 118-143)
 
-Add filter controls to the logs panel:
-- Filter by log level (info, warn, error, debug)
-- Filter by channel
-- Search text filter
-- Auto-refresh toggle
-
-### 2. Process Status Panel (New Component)
-**File:** `src/components/dashboard/ProcessPanel.tsx`
-
-Create a new panel showing:
-- Running `srt-live-transmit` processes (PID, command line, uptime)
-- Process memory/CPU usage per channel
-- Last stdout/stderr output snippets
-
-### 3. Channel Diagnostics View
-**File:** `src/components/dashboard/ChannelDiagnostics.tsx`
-
-Add a diagnostics modal/drawer for each channel:
-- SRT connection status (connected/waiting/error)
-- Multicast output status (packets sent, errors)
-- Network interface being used
-- Quick diagnostic commands (copy-paste for terminal)
-
-### 4. Agent Enhancement - Capture More Details
-**File:** `server-agent/agent.py`
-
-Enhance the agent to log more diagnostic information:
-- SRT connection events (listener ready, client connected, disconnected)
-- Multicast send statistics (packets/sec, bytes/sec)
-- Capture srt-live-transmit stderr output and send to logs table
-- Add periodic "health check" logs for running channels
-
-```python
-# Add to agent.py - capture process output
-def _monitor_process(self, channel_id: str):
-    """Monitor a channel process and capture output"""
-    while self.running:
-        # Read stdout line by line
-        line = cp.process.stdout.readline()
-        if line:
-            # Parse SRT stats from verbose output
-            self.log("debug", line.strip(), channel_id)
-        
-        # Check for SRT connection status
-        if "SRT connected" in line:
-            self.log("info", "SRT client connected", channel_id)
-```
-
-### 5. Quick Diagnostic Commands Panel
-**File:** `src/components/dashboard/DiagnosticCommands.tsx`
-
-Show copy-paste commands for server-side debugging:
-- `journalctl -u lovable-agent -f` - Live agent logs
-- `ps aux | grep srt-live-transmit` - Running processes
-- `tcpdump -i any host 239.1.x.x` - Multicast traffic
-- `ip route show table all | grep multicast` - Routing
-
-### 6. Database Schema Update
-Add a new field to channels for storing the last process output:
-
-```sql
-ALTER TABLE channels ADD COLUMN IF NOT EXISTS 
-  last_output TEXT,
-  last_output_at TIMESTAMPTZ;
-```
-
-## Technical Details
-
-### Agent Process Output Capture
-The agent will:
-1. Read stdout/stderr from srt-live-transmit in real-time
-2. Parse SRT statistics (bitrate, RTT, packet loss)
-3. Send important events to server_logs table
-4. Store last 1KB of output in channel.last_output
-
-### Frontend Updates
-- Add a "Diagnostics" tab next to Channels and Logs
-- Real-time process list via polling (every 5s)
-- Copy button for diagnostic commands
-- Expandable log entries to show full details
-
-## Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/components/dashboard/ProcessPanel.tsx` | Create | Show running processes |
-| `src/components/dashboard/DiagnosticCommands.tsx` | Create | Terminal commands helper |
-| `src/components/dashboard/LogsPanel.tsx` | Modify | Add filtering |
-| `src/pages/Dashboard.tsx` | Modify | Add Diagnostics tab |
-| `server-agent/agent.py` | Modify | Capture process output |
-| Database migration | Create | Add last_output column |
-
-## Immediate Workaround (No Code Changes)
-
-While I implement this, you can debug on your server:
+Replace the current architecture detection with support for both amd64 and arm64:
 
 ```bash
-# 1. Watch agent logs live
-sudo journalctl -u lovable-agent -f
+# Step 4: Install TSDuck (optional - for TS analysis)
+echo -e "${BLUE}[4/6] Installing TSDuck (optional, for TS analysis)...${NC}"
+if ! command -v tsp &> /dev/null; then
+    # Try apt first (some Ubuntu versions have it)
+    apt-get install -y -qq tsduck 2>/dev/null || {
+        echo -e "${YELLOW}TSDuck not in apt, downloading from GitHub...${NC}"
+        TSDUCK_VERSION="3.43-4549"
+        
+        # Detect architecture and Ubuntu version
+        ARCH=$(dpkg --print-architecture)
+        UBUNTU_VERSION=$(lsb_release -rs 2>/dev/null | cut -d. -f1)
+        
+        # Default to ubuntu24 if can't detect
+        [ -z "$UBUNTU_VERSION" ] && UBUNTU_VERSION="24"
+        [ "$UBUNTU_VERSION" -lt 24 ] && UBUNTU_VERSION="24"
+        [ "$UBUNTU_VERSION" -gt 25 ] && UBUNTU_VERSION="25"
+        
+        if [ "$ARCH" = "amd64" ]; then
+            DEB_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/tsduck_${TSDUCK_VERSION}.ubuntu${UBUNTU_VERSION}_amd64.deb"
+        elif [ "$ARCH" = "arm64" ]; then
+            DEB_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/tsduck_${TSDUCK_VERSION}.ubuntu${UBUNTU_VERSION}_arm64.deb"
+        else
+            echo -e "${YELLOW}TSDuck: unsupported architecture $ARCH, skipping${NC}"
+            DEB_URL=""
+        fi
+        
+        if [ -n "$DEB_URL" ]; then
+            echo -e "${BLUE}Downloading TSDuck for $ARCH (Ubuntu $UBUNTU_VERSION)...${NC}"
+            wget -q "$DEB_URL" -O /tmp/tsduck.deb && \
+            dpkg -i /tmp/tsduck.deb && \
+            apt-get install -f -y -qq
+            rm -f /tmp/tsduck.deb
+        fi
+    }
+fi
 
-# 2. Check running processes
-ps aux | grep srt
-
-# 3. Test multicast routing
-ip route | grep 239
-
-# 4. Check if multicast is being sent
-sudo tcpdump -i any -c 10 host 239.1.1.1
-
-# 5. Ensure multicast route exists
-sudo ip route add 239.0.0.0/8 dev eth0
+if command -v tsp &> /dev/null; then
+    echo -e "${GREEN}✓ TSDuck installed: $(which tsp)${NC}"
+else
+    echo -e "${YELLOW}⚠ TSDuck not installed (TS analysis features unavailable)${NC}"
+fi
 ```
+
+### Key Changes
+| Change | Description |
+|--------|-------------|
+| ARM64 support | Downloads `arm64` package when architecture is detected |
+| Version update | Uses TSDuck 3.43-4549 (latest with ARM64 support) |
+| Ubuntu version detection | Automatically selects ubuntu24 or ubuntu25 package |
+| Better logging | Shows which architecture and Ubuntu version is being used |
+
+## Immediate Workaround
+
+You can install TSDuck manually on your ARM64 server right now:
+
+```bash
+# Download and install TSDuck for ARM64 Ubuntu 24
+wget -q "https://github.com/tsduck/tsduck/releases/download/v3.43-4549/tsduck_3.43-4549.ubuntu24_arm64.deb" -O /tmp/tsduck.deb
+sudo dpkg -i /tmp/tsduck.deb
+sudo apt-get install -f -y
+rm /tmp/tsduck.deb
+
+# Verify installation
+tsp --version
+
+# Restart the agent to enable TS analysis
+sudo systemctl restart lovable-agent
+```
+
+## After Implementation
+
+Once you approve this plan, pull the updated installer and the ARM64 package will be downloaded automatically on future installations. For your current server, use the manual workaround above.
