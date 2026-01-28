@@ -78,6 +78,36 @@ export function useCreateChannel() {
   });
 }
 
+interface UpdateChannelInput {
+  id: string;
+  name: string;
+  folder_name: string;
+  srt_input: string;
+  multicast_output: string;
+}
+
+export function useUpdateChannel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: UpdateChannelInput): Promise<Channel> => {
+      const { id, ...updateData } = input;
+      const { data, error } = await supabase
+        .from('channels')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data as unknown as Channel;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+    },
+  });
+}
+
 export function useDeleteChannel() {
   const queryClient = useQueryClient();
 

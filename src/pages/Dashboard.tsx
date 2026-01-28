@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useServers, useCreateServer, useDeleteServer } from '@/hooks/useServers';
-import { useChannels, useCreateChannel, useDeleteChannel, useSendChannelCommand } from '@/hooks/useChannels';
+import { useChannels, useCreateChannel, useDeleteChannel, useUpdateChannel, useSendChannelCommand } from '@/hooks/useChannels';
 import { useServerLogs } from '@/hooks/useServerLogs';
 import { 
   useServerRecordings, 
@@ -39,6 +39,7 @@ export default function Dashboard() {
   const { data: channels = [], isLoading: channelsLoading } = useChannels(selectedServer?.id);
   const createChannel = useCreateChannel();
   const deleteChannel = useDeleteChannel();
+  const updateChannel = useUpdateChannel();
   const sendCommand = useSendChannelCommand();
 
   // Logs for selected server
@@ -94,6 +95,21 @@ export default function Dashboard() {
       toast.success('Channel deleted');
     } catch (error) {
       toast.error('Failed to delete channel');
+    }
+  };
+
+  const handleEditChannel = async (data: {
+    id: string;
+    name: string;
+    folder_name: string;
+    srt_input: string;
+    multicast_output: string;
+  }) => {
+    try {
+      await updateChannel.mutateAsync(data);
+      toast.success('Channel updated');
+    } catch (error) {
+      toast.error('Failed to update channel');
     }
   };
 
@@ -329,11 +345,13 @@ export default function Dashboard() {
                     onStart={() => handleStartChannel(channel.id, channel.server_id)}
                     onStop={() => handleStopChannel(channel.id, channel.server_id)}
                     onDelete={() => handleDeleteChannel(channel.id)}
+                    onEdit={handleEditChannel}
                     onStartRecording={() => handleStartRecording(channel.id, channel.server_id, channel.name, channel.folder_name)}
                     onStopRecording={activeRecording ? () => handleStopRecording(channel.id, channel.server_id, activeRecording.id) : undefined}
                     activeRecording={activeRecording}
                     isLoading={sendCommand.isPending}
                     isRecordingLoading={startRecording.isPending || stopRecording.isPending}
+                    isEditLoading={updateChannel.isPending}
                   />
                 );
               })}
