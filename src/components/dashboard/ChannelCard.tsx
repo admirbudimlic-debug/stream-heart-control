@@ -35,10 +35,11 @@ export function ChannelCard({
   isLoading,
   isRecordingLoading
 }: ChannelCardProps) {
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string, hasData: boolean) => {
     switch (status) {
       case 'running':
-        return 'bg-success text-success-foreground';
+        // Only show green if actually receiving data
+        return hasData ? 'bg-success text-success-foreground' : 'bg-warning text-warning-foreground';
       case 'starting':
       case 'stopping':
         return 'bg-warning text-warning-foreground';
@@ -83,6 +84,7 @@ export function ChannelCard({
   const effectiveInputBitrate = channel.input_bitrate ?? parseBitrateFromOutput(channel.last_output);
 
   const isRunning = channel.status === 'running';
+  const hasActiveData = effectiveInputBitrate !== null && effectiveInputBitrate > 0;
   const isTransitioning = channel.status === 'starting' || channel.status === 'stopping';
   const tsInfo = channel.ts_info;
   const isRecording = !!activeRecording;
@@ -104,21 +106,34 @@ export function ChannelCard({
                 REC
               </Badge>
             )}
-            <Badge className={cn("text-xs", getStatusColor(channel.status))}>
-              {channel.status}
+            <Badge className={cn("text-xs", getStatusColor(channel.status, hasActiveData))}>
+              {isRunning && !hasActiveData ? 'waiting' : channel.status}
             </Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Multicast Output - Always visible prominently when running */}
-        {isRunning && (
+        {/* Multicast Output - Only show green LIVE when actually receiving data */}
+        {isRunning && hasActiveData && (
           <div className="flex items-center justify-between rounded-md bg-success/10 p-2 text-sm">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 animate-pulse rounded-full bg-success" />
               <span className="font-medium text-success">LIVE</span>
             </div>
             <code className="rounded bg-muted px-2 py-0.5 text-xs font-semibold">
+              {channel.multicast_output}
+            </code>
+          </div>
+        )}
+        
+        {/* Waiting for connection indicator */}
+        {isRunning && !hasActiveData && (
+          <div className="flex items-center justify-between rounded-md bg-warning/10 p-2 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-warning" />
+              <span className="font-medium text-warning">Waiting for SRT connection...</span>
+            </div>
+            <code className="rounded bg-muted px-2 py-0.5 text-xs">
               {channel.multicast_output}
             </code>
           </div>
