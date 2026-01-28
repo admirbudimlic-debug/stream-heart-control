@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
+    // Prevent "Invalid hook call" / dispatcher=null issues caused by duplicated React copies
+    // (commonly triggered by Radix UI providers like TooltipProvider).
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
