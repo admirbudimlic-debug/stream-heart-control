@@ -139,6 +139,19 @@ export default function Dashboard() {
     }
   };
 
+  const handleProbeChannel = async (channelId: string, serverId: string) => {
+    try {
+      await sendCommand.mutateAsync({
+        serverId,
+        channelId,
+        commandType: 'probe_stream',
+      });
+      toast.success('Probe command sent - analyzing stream...');
+    } catch (error) {
+      toast.error('Failed to send probe command');
+    }
+  };
+
   const handleStartRecording = async (channelId: string, serverId: string, channelName: string, folderName: string) => {
     try {
       await startRecording.mutateAsync({
@@ -346,10 +359,12 @@ export default function Dashboard() {
                     onStop={() => handleStopChannel(channel.id, channel.server_id)}
                     onDelete={() => handleDeleteChannel(channel.id)}
                     onEdit={handleEditChannel}
+                    onProbe={() => handleProbeChannel(channel.id, channel.server_id)}
                     onStartRecording={() => handleStartRecording(channel.id, channel.server_id, channel.name, channel.folder_name)}
                     onStopRecording={activeRecording ? () => handleStopRecording(channel.id, channel.server_id, activeRecording.id) : undefined}
                     activeRecording={activeRecording}
                     isLoading={sendCommand.isPending}
+                    isProbing={sendCommand.isPending}
                     isRecordingLoading={startRecording.isPending || stopRecording.isPending}
                     isEditLoading={updateChannel.isPending}
                   />

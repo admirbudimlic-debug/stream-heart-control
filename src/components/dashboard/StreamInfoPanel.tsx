@@ -1,44 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TsInfo } from '@/types/streaming';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Square, Circle } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface StreamInfoPanelProps {
   tsInfo: TsInfo | null;
   isRunning: boolean;
   isRecording: boolean;
-  onStartMulticast?: (pids: number[]) => void;
-  onStopMulticast?: () => void;
-  onStartRecording?: (pids: number[]) => void;
-  onStopRecording?: () => void;
-  isMulticastLoading?: boolean;
-  isRecordingLoading?: boolean;
-}
-
-interface PidRow {
-  type: 'video' | 'audio';
-  pid: number;
-  label: string;
-  details: string;
-  mcEnabled: boolean;
-  recEnabled: boolean;
-  xcEnabled: boolean;
 }
 
 export function StreamInfoPanel({ 
   tsInfo, 
   isRunning,
-  isRecording,
-  onStartMulticast,
-  onStopMulticast,
-  onStartRecording,
-  onStopRecording,
-  isMulticastLoading,
-  isRecordingLoading
+  isRecording
 }: StreamInfoPanelProps) {
+  const [expanded, setExpanded] = useState(false);
   const [pidSelections, setPidSelections] = useState<Record<number, { mc: boolean; rec: boolean; xc: boolean }>>({});
+
+  // Initialize selections when tsInfo changes
+  useEffect(() => {
+    if (!tsInfo) return;
+    
+    const allPids = [
+      ...(tsInfo.video?.map(v => v.pid) || []),
+      ...(tsInfo.audio?.map(a => a.pid) || [])
+    ];
+    
+    const initial: Record<number, { mc: boolean; rec: boolean; xc: boolean }> = {};
+    allPids.forEach(pid => {
+      initial[pid] = { mc: true, rec: true, xc: false };
+    });
+    setPidSelections(initial);
+  }, [tsInfo]);
 
   const formatPid = (pid: number) => {
     return `${pid} (0x${pid.toString(16).toUpperCase().padStart(4, '0')})`;
@@ -58,247 +54,145 @@ export function StreamInfoPanel({
     }));
   };
 
-  const getSelectedPids = (field: 'mc' | 'rec') => {
-    const allPids = [
-      ...(tsInfo?.video.map(v => v.pid) || []),
-      ...(tsInfo?.audio.map(a => a.pid) || [])
-    ];
-    return allPids.filter(pid => getSelection(pid)[field]);
-  };
+  if (!tsInfo) return null;
 
-  if (!tsInfo) {
-    return (
-      <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-        {isRunning ? 'Analyzing stream... waiting for TS data' : 'Start channel to analyze stream'}
-      </div>
-    );
-  }
-
-  const hasStreams = tsInfo.video.length > 0 || tsInfo.audio.length > 0;
-
-  if (!hasStreams) {
-    return (
-      <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-        No video/audio streams detected in transport stream
-      </div>
-    );
-  }
+  const hasStreams = (tsInfo.video?.length || 0) > 0 || (tsInfo.audio?.length || 0) > 0;
+  if (!hasStreams) return null;
 
   return (
-    <div className="rounded-md border bg-card text-sm">
-      {/* Service Info Header */}
-      <div className="border-b bg-muted/30 px-4 py-3">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-1">
-          <div className="flex gap-2">
-            <span className="text-muted-foreground">Service Name:</span>
-            <span className="font-medium">{tsInfo.service_name || 'N/A'}</span>
-          </div>
-          <div className="flex gap-2">
-            <span className="text-muted-foreground">Provider:</span>
-            <span className="font-medium">{tsInfo.provider || 'N/A'}</span>
-          </div>
-          <div className="flex gap-2">
-            <span className="text-muted-foreground">PMT PID:</span>
-            <span className="font-mono">{tsInfo.pmt_pid ? formatPid(tsInfo.pmt_pid) : 'N/A'}</span>
-          </div>
-          <div className="flex gap-2">
-            <span className="text-muted-foreground">PCR PID:</span>
-            <span className="font-mono">{tsInfo.pcr_pid ? formatPid(tsInfo.pcr_pid) : 'N/A'}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* PID Table */}
-      <div className="px-4 py-2">
-        <table className="w-full">
-          <thead>
-            <tr className="text-xs uppercase text-muted-foreground border-b">
-              <th className="text-left py-2 font-medium">Stream</th>
-              <th className="text-left py-2 font-medium">PID</th>
-              <th className="text-left py-2 font-medium">Codec / Details</th>
-              <th className="text-center py-2 font-medium w-20">
-                <div className="flex flex-col items-center">
-                  <span>MC</span>
-                  <span className="text-[10px] normal-case text-muted-foreground">Multicast</span>
-                </div>
-              </th>
-              <th className="text-center py-2 font-medium w-20">
-                <div className="flex flex-col items-center">
-                  <span>REC</span>
-                  <span className="text-[10px] normal-case text-muted-foreground">Record</span>
-                </div>
-              </th>
-              <th className="text-center py-2 font-medium w-20">
-                <div className="flex flex-col items-center">
-                  <span>XC</span>
-                  <span className="text-[10px] normal-case text-muted-foreground">Transcode</span>
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* Video Streams */}
-            {tsInfo.video.map((v, idx) => {
-              const sel = getSelection(v.pid);
-              return (
-                <tr key={`video-${v.pid}-${idx}`} className="border-b border-border/50">
-                  <td className="py-2">
-                    <Badge variant="secondary" className="text-xs">
-                      Video {tsInfo.video.length > 1 ? idx + 1 : ''}
-                    </Badge>
-                  </td>
-                  <td className="py-2 font-mono text-xs">{formatPid(v.pid)}</td>
-                  <td className="py-2 text-muted-foreground">
-                    {v.codec}
-                    {v.resolution && ` • ${v.resolution}`}
-                    {v.bitrate && ` • ${(v.bitrate / 1000).toFixed(0)} kb/s`}
-                  </td>
-                  <td className="py-2 text-center">
-                    <Button
-                      variant={sel.mc ? "default" : "outline"}
-                      size="sm"
-                      className={cn("h-7 w-7 p-0", sel.mc && "bg-primary")}
-                      onClick={() => toggleSelection(v.pid, 'mc')}
-                    >
-                      {sel.mc ? <Play className="h-3 w-3" /> : <Square className="h-3 w-3" />}
-                    </Button>
-                  </td>
-                  <td className="py-2 text-center">
-                    <Button
-                      variant={sel.rec ? "destructive" : "outline"}
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => toggleSelection(v.pid, 'rec')}
-                    >
-                      <Circle className={cn("h-3 w-3", sel.rec && "fill-current")} />
-                    </Button>
-                  </td>
-                  <td className="py-2 text-center">
-                    <Button
-                      variant={sel.xc ? "secondary" : "outline"}
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => toggleSelection(v.pid, 'xc')}
-                      disabled
-                      title="Transcode coming soon"
-                    >
-                      <span className="text-xs font-medium">XC</span>
-                    </Button>
-                  </td>
-                </tr>
-              );
-            })}
-
-            {/* Audio Streams */}
-            {tsInfo.audio.map((a, idx) => {
-              const sel = getSelection(a.pid);
-              return (
-                <tr key={`audio-${a.pid}-${idx}`} className="border-b border-border/50 last:border-b-0">
-                  <td className="py-2">
-                    <Badge variant="outline" className="text-xs">
-                      Audio {idx + 1}
-                    </Badge>
-                  </td>
-                  <td className="py-2 font-mono text-xs">{formatPid(a.pid)}</td>
-                  <td className="py-2 text-muted-foreground">
-                    {a.codec}
-                    {a.language && ` • ${a.language}`}
-                    {a.bitrate && ` • ${a.bitrate} kb/s`}
-                  </td>
-                  <td className="py-2 text-center">
-                    <Button
-                      variant={sel.mc ? "default" : "outline"}
-                      size="sm"
-                      className={cn("h-7 w-7 p-0", sel.mc && "bg-primary")}
-                      onClick={() => toggleSelection(a.pid, 'mc')}
-                    >
-                      {sel.mc ? <Play className="h-3 w-3" /> : <Square className="h-3 w-3" />}
-                    </Button>
-                  </td>
-                  <td className="py-2 text-center">
-                    <Button
-                      variant={sel.rec ? "destructive" : "outline"}
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => toggleSelection(a.pid, 'rec')}
-                    >
-                      <Circle className={cn("h-3 w-3", sel.rec && "fill-current")} />
-                    </Button>
-                  </td>
-                  <td className="py-2 text-center">
-                    <Button
-                      variant={sel.xc ? "secondary" : "outline"}
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => toggleSelection(a.pid, 'xc')}
-                      disabled
-                      title="Transcode coming soon"
-                    >
-                      <span className="text-xs font-medium">XC</span>
-                    </Button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Action Footer */}
-      <div className="border-t bg-muted/30 px-4 py-3 flex items-center justify-between">
-        <div className="text-xs text-muted-foreground">
-          {tsInfo.total_bitrate && (
-            <span>Total Bitrate: {(tsInfo.total_bitrate / 1000000).toFixed(2)} Mbps</span>
+    <div className="rounded-b-lg border border-t-0 bg-muted/20 text-xs">
+      {/* Collapsed Summary / Toggle */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/40 transition-colors"
+      >
+        <div className="flex items-center gap-4">
+          <span className="text-muted-foreground">Service:</span>
+          <span className="font-medium">{tsInfo.service_name || 'N/A'}</span>
+          {tsInfo.provider && (
+            <>
+              <span className="text-muted-foreground">Provider:</span>
+              <span>{tsInfo.provider}</span>
+            </>
           )}
+          <span className="text-muted-foreground">PMT:</span>
+          <span className="font-mono">{tsInfo.pmt_pid || 'N/A'}</span>
+          <span className="text-muted-foreground">PCR:</span>
+          <span className="font-mono">{tsInfo.pcr_pid || 'N/A'}</span>
         </div>
         <div className="flex items-center gap-2">
-          {/* Multicast Action */}
-          {isRunning ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onStopMulticast}
-              disabled={isMulticastLoading}
-            >
-              <Square className="h-3 w-3 mr-1.5" />
-              Stop Multicast
-            </Button>
-          ) : (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => onStartMulticast?.(getSelectedPids('mc'))}
-              disabled={isMulticastLoading || getSelectedPids('mc').length === 0}
-            >
-              <Play className="h-3 w-3 mr-1.5" />
-              Start Multicast ({getSelectedPids('mc').length} PIDs)
-            </Button>
-          )}
+          <span className="text-muted-foreground">
+            {tsInfo.video?.length || 0} video, {tsInfo.audio?.length || 0} audio
+          </span>
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </div>
+      </button>
 
-          {/* Recording Action */}
-          {isRecording ? (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={onStopRecording}
-              disabled={isRecordingLoading}
-            >
-              <Square className="h-3 w-3 mr-1.5" />
-              Stop Recording
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onStartRecording?.(getSelectedPids('rec'))}
-              disabled={isRecordingLoading || !isRunning || getSelectedPids('rec').length === 0}
-            >
-              <Circle className="h-3 w-3 fill-destructive text-destructive mr-1.5" />
-              Record ({getSelectedPids('rec').length} PIDs)
-            </Button>
+      {/* Expanded PID Table */}
+      {expanded && (
+        <div className="border-t px-3 py-2">
+          <table className="w-full">
+            <thead>
+              <tr className="text-[10px] uppercase text-muted-foreground">
+                <th className="text-left py-1 font-medium w-20">Type</th>
+                <th className="text-left py-1 font-medium w-32">PID</th>
+                <th className="text-left py-1 font-medium">Details</th>
+                <th className="text-center py-1 font-medium w-16">MC</th>
+                <th className="text-center py-1 font-medium w-16">REC</th>
+                <th className="text-center py-1 font-medium w-16">XC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Video Streams */}
+              {tsInfo.video?.map((v, idx) => {
+                const sel = getSelection(v.pid);
+                return (
+                  <tr key={`video-${v.pid}-${idx}`} className="border-t border-border/30">
+                    <td className="py-1.5">
+                      <Badge variant="secondary" className="text-[10px]">Video</Badge>
+                    </td>
+                    <td className="py-1.5 font-mono">{formatPid(v.pid)}</td>
+                    <td className="py-1.5 text-muted-foreground">
+                      {v.codec}{v.resolution && ` • ${v.resolution}`}{v.bitrate && ` • ${(v.bitrate / 1000).toFixed(0)}kb/s`}
+                    </td>
+                    <td className="py-1.5 text-center">
+                      <Checkbox
+                        checked={sel.mc}
+                        onCheckedChange={() => toggleSelection(v.pid, 'mc')}
+                        disabled={isRunning}
+                        className="h-4 w-4"
+                      />
+                    </td>
+                    <td className="py-1.5 text-center">
+                      <Checkbox
+                        checked={sel.rec}
+                        onCheckedChange={() => toggleSelection(v.pid, 'rec')}
+                        disabled={isRecording}
+                        className="h-4 w-4"
+                      />
+                    </td>
+                    <td className="py-1.5 text-center">
+                      <Checkbox
+                        checked={sel.xc}
+                        onCheckedChange={() => toggleSelection(v.pid, 'xc')}
+                        disabled
+                        className="h-4 w-4"
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {/* Audio Streams */}
+              {tsInfo.audio?.map((a, idx) => {
+                const sel = getSelection(a.pid);
+                return (
+                  <tr key={`audio-${a.pid}-${idx}`} className="border-t border-border/30">
+                    <td className="py-1.5">
+                      <Badge variant="outline" className="text-[10px]">Audio {idx + 1}</Badge>
+                    </td>
+                    <td className="py-1.5 font-mono">{formatPid(a.pid)}</td>
+                    <td className="py-1.5 text-muted-foreground">
+                      {a.codec}{a.language && ` • ${a.language}`}{a.bitrate && ` • ${a.bitrate}kb/s`}
+                    </td>
+                    <td className="py-1.5 text-center">
+                      <Checkbox
+                        checked={sel.mc}
+                        onCheckedChange={() => toggleSelection(a.pid, 'mc')}
+                        disabled={isRunning}
+                        className="h-4 w-4"
+                      />
+                    </td>
+                    <td className="py-1.5 text-center">
+                      <Checkbox
+                        checked={sel.rec}
+                        onCheckedChange={() => toggleSelection(a.pid, 'rec')}
+                        disabled={isRecording}
+                        className="h-4 w-4"
+                      />
+                    </td>
+                    <td className="py-1.5 text-center">
+                      <Checkbox
+                        checked={sel.xc}
+                        onCheckedChange={() => toggleSelection(a.pid, 'xc')}
+                        disabled
+                        className="h-4 w-4"
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Bitrate footer */}
+          {tsInfo.total_bitrate && (
+            <div className="mt-2 pt-2 border-t border-border/30 text-muted-foreground">
+              Total Bitrate: {(tsInfo.total_bitrate / 1000000).toFixed(2)} Mbps
+            </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
