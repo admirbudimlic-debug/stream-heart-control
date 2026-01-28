@@ -65,6 +65,23 @@ export function ChannelCard({
     return `${kbps.toFixed(0)} Kbps`;
   };
 
+  // Parse bitrate from last_output if input_bitrate is not set
+  // Looks for patterns like "RECEIVING:      16.2066" (in Mbps)
+  const parseBitrateFromOutput = (lastOutput: string | null | undefined): number | null => {
+    if (!lastOutput) return null;
+    const match = lastOutput.match(/RECEIVING:\s+([\d.]+)/);
+    if (match) {
+      const mbps = parseFloat(match[1]);
+      if (!isNaN(mbps) && mbps > 0) {
+        return mbps * 1000; // Convert Mbps to Kbps for formatBitrate
+      }
+    }
+    return null;
+  };
+
+  // Get the effective input bitrate - from DB or parsed from last_output
+  const effectiveInputBitrate = channel.input_bitrate ?? parseBitrateFromOutput(channel.last_output);
+
   const isRunning = channel.status === 'running';
   const isTransitioning = channel.status === 'starting' || channel.status === 'stopping';
   const tsInfo = channel.ts_info;
@@ -230,7 +247,7 @@ export function ChannelCard({
               <Activity className="h-3 w-3" />
               <span className="text-xs">Bitrate</span>
             </div>
-            <div className="font-mono text-xs">{formatBitrate(channel.input_bitrate)}</div>
+            <div className="font-mono text-xs">{formatBitrate(effectiveInputBitrate)}</div>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
