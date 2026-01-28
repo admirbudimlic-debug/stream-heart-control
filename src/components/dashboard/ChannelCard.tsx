@@ -131,10 +131,10 @@ export function ChannelCard({
           <div className="flex items-center justify-between rounded-md bg-warning/10 p-2 text-sm">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 animate-pulse rounded-full bg-warning" />
-              <span className="font-medium text-warning">Waiting for SRT connection...</span>
+              <span className="font-medium text-warning">Waiting for SRT...</span>
             </div>
-            <code className="rounded bg-muted px-2 py-0.5 text-xs">
-              {channel.multicast_output}
+            <code className="rounded bg-warning/20 px-2 py-0.5 text-xs text-warning truncate max-w-[180px]">
+              {channel.srt_input.replace(/\?.*/, '')}
             </code>
           </div>
         )}
