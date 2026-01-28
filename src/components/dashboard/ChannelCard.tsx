@@ -161,9 +161,9 @@ export function ChannelCard({
       </div>
 
       {/* Recording Button & Indicator */}
-      <div className="flex items-center gap-2 min-w-[140px]">
+      <div className="flex flex-col gap-1 min-w-[140px]">
         {isRecording ? (
-          <div className="flex items-center gap-2">
+          <>
             <Button
               variant="destructive"
               size="sm"
@@ -180,7 +180,7 @@ export function ChannelCard({
                 {(activeRecording.file_size_bytes / (1024 * 1024)).toFixed(1)} MB
               </span>
             )}
-          </div>
+          </>
         ) : (
           onStartRecording && (
             <Button
