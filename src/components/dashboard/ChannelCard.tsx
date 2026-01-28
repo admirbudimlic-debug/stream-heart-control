@@ -6,7 +6,7 @@ import { Play, Square, Trash2, Activity, Clock, AlertCircle, Circle, HardDrive, 
 import { cn } from '@/lib/utils';
 import { EditChannelDialog } from './EditChannelDialog';
 import { StreamInfoPanel } from './StreamInfoPanel';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
 interface ChannelCardProps {
   channel: Channel;
   onStart: () => void;
