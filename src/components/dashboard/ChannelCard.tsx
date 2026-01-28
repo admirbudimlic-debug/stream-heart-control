@@ -57,8 +57,23 @@ export function ChannelCard({
     return null;
   };
 
+  // Parse output/sending bitrate from last_output
+  const parseOutputBitrateFromOutput = (lastOutput: string | null | undefined): number | null => {
+    if (!lastOutput) return null;
+    // Try SENDING pattern first
+    const sendMatch = lastOutput.match(/SENDING:\s+([\d.]+)/);
+    if (sendMatch) {
+      const mbps = parseFloat(sendMatch[1]);
+      if (!isNaN(mbps) && mbps > 0) {
+        return mbps * 1000;
+      }
+    }
+    return null;
+  };
+
   const effectiveInputBitrate = channel.input_bitrate ?? parseBitrateFromOutput(channel.last_output);
-  const effectiveOutputBitrate = channel.output_bitrate;
+  // For passthrough: if we have input data flowing, output should also be flowing
+  const effectiveOutputBitrate = channel.output_bitrate ?? parseOutputBitrateFromOutput(channel.last_output) ?? (effectiveInputBitrate && effectiveInputBitrate > 0 ? effectiveInputBitrate : null);
   const isRunning = channel.status === 'running';
   const hasInputData = effectiveInputBitrate !== null && effectiveInputBitrate > 0;
   const hasOutputData = effectiveOutputBitrate !== null && effectiveOutputBitrate > 0;
