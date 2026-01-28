@@ -59,6 +59,8 @@ export interface Channel {
   error_message: string | null;
   ts_info: TsInfo | null;
   ts_analyzed_at: string | null;
+  last_output: string | null;
+  last_output_at: string | null;
   created_at: string;
   updated_at: string;
   server?: Server;
