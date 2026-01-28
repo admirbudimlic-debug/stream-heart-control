@@ -6,7 +6,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,24 +22,42 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Plus, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
+import { Channel } from '@/types/streaming';
 
-interface AddChannelDialogProps {
-  serverId: string;
-  serverIndex: number; // 1-based server index for multicast address
-  onAdd: (data: {
-    server_id: string;
+interface EditChannelDialogProps {
+  channel: Channel | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: {
+    id: string;
     name: string;
     folder_name: string;
     srt_input: string;
     multicast_output: string;
   }) => void;
   isLoading?: boolean;
-  existingChannelCount: number;
 }
 
-export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, existingChannelCount }: AddChannelDialogProps) {
-  const [open, setOpen] = useState(false);
+// Parse SRT URL to extract base URL and parameters
+function parseSrtUrl(url: string) {
+  const questionIndex = url.indexOf('?');
+  if (questionIndex === -1) {
+    return { baseUrl: url, params: {} };
+  }
+  const baseUrl = url.substring(0, questionIndex);
+  const paramString = url.substring(questionIndex + 1);
+  const params: Record<string, string> = {};
+  paramString.split('&').forEach(pair => {
+    const [key, value] = pair.split('=');
+    if (key && value !== undefined) {
+      params[decodeURIComponent(key)] = decodeURIComponent(value);
+    }
+  });
+  return { baseUrl, params };
+}
+
+export function EditChannelDialog({ channel, open, onOpenChange, onSave, isLoading }: EditChannelDialogProps) {
   const [name, setName] = useState('');
   const [srtInput, setSrtInput] = useState('');
   const [passphrase, setPassphrase] = useState('');
@@ -55,14 +72,34 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
   const [sndBuf, setSndBuf] = useState('');
   const [fc, setFc] = useState('');
 
+  // Initialize form when channel changes
+  useEffect(() => {
+    if (channel) {
+      setName(channel.name);
+      setMulticastOutput(channel.multicast_output);
+      
+      // Parse existing SRT URL
+      const { baseUrl, params } = parseSrtUrl(channel.srt_input);
+      setSrtInput(baseUrl);
+      
+      // Extract known parameters
+      setPassphrase(params.passphrase || '');
+      setSrtMode(params.mode || 'caller');
+      setLatency(params.latency || params.rcvlatency || '');
+      setPeerIdleTimeout(params.peeridletimeout || '');
+      setRcvBuf(params.rcvbuf || '');
+      setSndBuf(params.sndbuf || '');
+      setFc(params.fc || '');
+      
+      // Open advanced section if any advanced params are set
+      if (params.latency || params.peeridletimeout || params.rcvbuf || params.sndbuf || params.fc || params.mode) {
+        setAdvancedOpen(true);
+      }
+    }
+  }, [channel]);
+
   // Generate folder name from channel name
   const folderName = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
-  // Auto-generate next multicast address: 239.1.[server_nr].[channel_nr]:5000
-  useEffect(() => {
-    const nextChannelIndex = existingChannelCount + 1;
-    setMulticastOutput(`239.1.${serverIndex}.${nextChannelIndex}:5000`);
-  }, [existingChannelCount, serverIndex, open]);
 
   // Build the full SRT URL with all parameters
   const buildSrtUrl = (): string => {
@@ -97,55 +134,34 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
     return `${srtInput.trim()}${separator}${params.join('&')}`;
   };
 
-  const resetForm = () => {
-    setName('');
-    setSrtInput('');
-    setPassphrase('');
-    setAdvancedOpen(false);
-    setSrtMode('caller');
-    setLatency('');
-    setPeerIdleTimeout('');
-    setRcvBuf('');
-    setSndBuf('');
-    setFc('');
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim() && srtInput.trim() && multicastOutput.trim()) {
-      onAdd({
-        server_id: serverId,
+    if (channel && name.trim() && srtInput.trim() && multicastOutput.trim()) {
+      onSave({
+        id: channel.id,
         name: name.trim(),
         folder_name: folderName || 'channel',
         srt_input: buildSrtUrl(),
         multicast_output: multicastOutput.trim(),
       });
-      resetForm();
-      setOpen(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          Add Channel
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Add New Channel</DialogTitle>
+            <DialogTitle>Edit Channel</DialogTitle>
             <DialogDescription>
-              Create a new SRT to Multicast channel. The stream will use srt-live-transmit for bit-perfect passthrough.
+              Modify channel settings and SRT parameters.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
             <div className="space-y-2">
-              <Label htmlFor="channel-name">Channel Name</Label>
+              <Label htmlFor="edit-channel-name">Channel Name</Label>
               <Input
-                id="channel-name"
+                id="edit-channel-name"
                 placeholder="e.g., Sports Feed 1"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -158,9 +174,9 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="srt-input">SRT Source</Label>
+              <Label htmlFor="edit-srt-input">SRT Source</Label>
               <Input
-                id="srt-input"
+                id="edit-srt-input"
                 placeholder="srt://hostname:port"
                 value={srtInput}
                 onChange={(e) => setSrtInput(e.target.value)}
@@ -170,22 +186,19 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="passphrase">Passphrase (Optional)</Label>
+              <Label htmlFor="edit-passphrase">Passphrase (Optional)</Label>
               <Input
-                id="passphrase"
+                id="edit-passphrase"
                 type="password"
                 placeholder="SRT encryption passphrase"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                10-79 characters for AES encryption
-              </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="multicast-output">Multicast Output</Label>
+              <Label htmlFor="edit-multicast-output">Multicast Output</Label>
               <Input
-                id="multicast-output"
+                id="edit-multicast-output"
                 placeholder="239.1.1.1:5000"
                 value={multicastOutput}
                 onChange={(e) => setMulticastOutput(e.target.value)}
@@ -202,9 +215,9 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label htmlFor="srt-mode">SRT Mode</Label>
+                  <Label htmlFor="edit-srt-mode">SRT Mode</Label>
                   <Select value={srtMode} onValueChange={setSrtMode}>
-                    <SelectTrigger id="srt-mode">
+                    <SelectTrigger id="edit-srt-mode">
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
                     <SelectContent>
@@ -219,9 +232,9 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="latency">Latency (ms)</Label>
+                  <Label htmlFor="edit-latency">Latency (ms)</Label>
                   <Input
-                    id="latency"
+                    id="edit-latency"
                     type="number"
                     placeholder="120 (default)"
                     value={latency}
@@ -233,9 +246,9 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="peeridletimeout">Peer Idle Timeout (ms)</Label>
+                  <Label htmlFor="edit-peeridletimeout">Peer Idle Timeout (ms)</Label>
                   <Input
-                    id="peeridletimeout"
+                    id="edit-peeridletimeout"
                     type="number"
                     placeholder="300000 (5 minutes)"
                     value={peerIdleTimeout}
@@ -248,9 +261,9 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="rcvbuf">Receive Buffer</Label>
+                    <Label htmlFor="edit-rcvbuf">Receive Buffer</Label>
                     <Input
-                      id="rcvbuf"
+                      id="edit-rcvbuf"
                       type="number"
                       placeholder="12058624"
                       value={rcvBuf}
@@ -258,9 +271,9 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sndbuf">Send Buffer</Label>
+                    <Label htmlFor="edit-sndbuf">Send Buffer</Label>
                     <Input
-                      id="sndbuf"
+                      id="edit-sndbuf"
                       type="number"
                       placeholder="12058624"
                       value={sndBuf}
@@ -273,9 +286,9 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
                 </p>
 
                 <div className="space-y-2">
-                  <Label htmlFor="fc">Flow Control Window</Label>
+                  <Label htmlFor="edit-fc">Flow Control Window</Label>
                   <Input
-                    id="fc"
+                    id="edit-fc"
                     type="number"
                     placeholder="25600"
                     value={fc}
@@ -289,14 +302,14 @@ export function AddChannelDialog({ serverId, serverIndex, onAdd, isLoading, exis
             </Collapsible>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button 
               type="submit" 
               disabled={!name.trim() || !srtInput.trim() || !multicastOutput.trim() || isLoading}
             >
-              {isLoading ? 'Creating...' : 'Create Channel'}
+              {isLoading ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </form>
