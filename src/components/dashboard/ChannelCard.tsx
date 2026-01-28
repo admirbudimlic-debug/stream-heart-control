@@ -58,13 +58,15 @@ export function ChannelCard({
   };
 
   const effectiveInputBitrate = channel.input_bitrate ?? parseBitrateFromOutput(channel.last_output);
+  const effectiveOutputBitrate = channel.output_bitrate;
   const isRunning = channel.status === 'running';
-  const hasActiveData = effectiveInputBitrate !== null && effectiveInputBitrate > 0;
+  const hasInputData = effectiveInputBitrate !== null && effectiveInputBitrate > 0;
+  const hasOutputData = effectiveOutputBitrate !== null && effectiveOutputBitrate > 0;
   const isTransitioning = channel.status === 'starting' || channel.status === 'stopping';
   const isRecording = !!activeRecording;
 
   const getStatusBadge = () => {
-    if (isRunning && hasActiveData) {
+    if (isRunning && hasInputData && hasOutputData) {
       return (
         <Badge className="bg-success text-success-foreground gap-1">
           <div className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
@@ -72,7 +74,7 @@ export function ChannelCard({
         </Badge>
       );
     }
-    if (isRunning && !hasActiveData) {
+    if (isRunning && (!hasInputData || !hasOutputData)) {
       return (
         <Badge className="bg-warning text-warning-foreground gap-1">
           <div className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
@@ -127,8 +129,8 @@ export function ChannelCard({
         <span className="text-[10px] uppercase text-muted-foreground">SRT Input</span>
         <code className={cn(
           "text-xs truncate max-w-[220px] rounded px-1.5 py-0.5",
-          isRunning && hasActiveData ? "bg-success/20 text-success" : 
-          isRunning && !hasActiveData ? "bg-warning/20 text-warning" : "bg-muted"
+          isRunning && hasInputData ? "bg-success/20 text-success" : 
+          isRunning && !hasInputData ? "bg-warning/20 text-warning" : "bg-muted"
         )}>
           {channel.srt_input.replace(/\?.*/, '')}
         </code>
@@ -149,8 +151,8 @@ export function ChannelCard({
         <span className="text-[10px] uppercase text-muted-foreground">Multicast Output</span>
         <code className={cn(
           "text-xs rounded px-1.5 py-0.5",
-          isRunning && hasActiveData ? "bg-success/20 text-success" : 
-          isRunning && !hasActiveData ? "bg-warning/20 text-warning" : "bg-muted"
+          isRunning && hasOutputData ? "bg-success/20 text-success" : 
+          isRunning && !hasOutputData ? "bg-warning/20 text-warning" : "bg-muted"
         )}>
           {channel.multicast_output}
         </code>
