@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useServers, useCreateServer, useDeleteServer } from '@/hooks/useServers';
-import { useChannels, useCreateChannel, useDeleteChannel, useUpdateChannel, useSendChannelCommand } from '@/hooks/useChannels';
+import { useChannels, useCreateChannel, useDeleteChannel, useUpdateChannel, useSendChannelCommand, useProbingChannels } from '@/hooks/useChannels';
 import { useServerLogs } from '@/hooks/useServerLogs';
 import { 
   useServerRecordings, 
@@ -41,6 +41,9 @@ export default function Dashboard() {
   const deleteChannel = useDeleteChannel();
   const updateChannel = useUpdateChannel();
   const sendCommand = useSendChannelCommand();
+  
+  // Probe state tracking via realtime
+  const { isProbing, startProbing } = useProbingChannels();
 
   // Logs for selected server
   const { data: logs = [], isLoading: logsLoading } = useServerLogs(selectedServer?.id);
@@ -141,12 +144,14 @@ export default function Dashboard() {
 
   const handleProbeChannel = async (channelId: string, serverId: string) => {
     try {
+      // Optimistically mark as probing
+      startProbing(channelId);
       await sendCommand.mutateAsync({
         serverId,
         channelId,
         commandType: 'probe_stream',
       });
-      toast.success('Probe command sent - analyzing stream...');
+      toast.success('Probing stream - this may take 10-15 seconds...');
     } catch (error) {
       toast.error('Failed to send probe command');
     }
@@ -364,7 +369,7 @@ export default function Dashboard() {
                     onStopRecording={activeRecording ? () => handleStopRecording(channel.id, channel.server_id, activeRecording.id) : undefined}
                     activeRecording={activeRecording}
                     isLoading={sendCommand.isPending}
-                    isProbing={sendCommand.isPending}
+                    isProbing={isProbing(channel.id)}
                     isRecordingLoading={startRecording.isPending || stopRecording.isPending}
                     isEditLoading={updateChannel.isPending}
                   />

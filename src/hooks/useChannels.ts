@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Channel } from '@/types/streaming';
-import { useEffect } from 'react';
+import { Channel, Command } from '@/types/streaming';
+import { useEffect, useState, useCallback } from 'react';
 import type { Json } from '@/integrations/supabase/types';
 
 export function useChannels(serverId?: string) {
@@ -25,7 +25,7 @@ export function useChannels(serverId?: string) {
     },
   });
 
-  // Set up realtime subscription
+  // Set up realtime subscription for channels
   useEffect(() => {
     const channel = supabase
       .channel('channels-changes')
@@ -48,6 +48,58 @@ export function useChannels(serverId?: string) {
   }, [queryClient]);
 
   return query;
+}
+
+// Hook to track pending probe commands per channel
+export function useProbingChannels() {
+  const [probingChannels, setProbingChannels] = useState<Set<string>>(new Set());
+
+  // Subscribe to command status changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('commands-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'commands',
+        },
+        (payload) => {
+          const cmd = payload.new as Command | undefined;
+          if (!cmd) return;
+          
+          // Only track probe_stream commands
+          if (cmd.command_type !== 'probe_stream') return;
+          
+          if (cmd.status === 'pending' || cmd.status === 'processing') {
+            setProbingChannels(prev => new Set([...prev, cmd.channel_id!]));
+          } else {
+            // completed or failed - remove from probing set
+            setProbingChannels(prev => {
+              const next = new Set(prev);
+              next.delete(cmd.channel_id!);
+              return next;
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const isProbing = useCallback((channelId: string) => {
+    return probingChannels.has(channelId);
+  }, [probingChannels]);
+
+  const startProbing = useCallback((channelId: string) => {
+    setProbingChannels(prev => new Set([...prev, channelId]));
+  }, []);
+
+  return { isProbing, startProbing, probingChannels };
 }
 
 interface CreateChannelInput {
