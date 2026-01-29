@@ -311,8 +311,94 @@ class StreamingAgent:
             if result.returncode != 0:
                 return None
             
-            # Parse JSON output
-            data = json.loads(result.stdout)
+            return self._parse_ts_json(result.stdout)
+            
+        except subprocess.TimeoutExpired:
+            self.log("debug", "TS analysis timed out")
+            return None
+        except json.JSONDecodeError:
+            self.log("debug", "Failed to parse TS analysis output")
+            return None
+        except Exception as e:
+            self.log("debug", f"TS analysis failed: {e}")
+            return None
+    
+    def _probe_srt_stream(self, channel: dict) -> Optional[Dict[str, Any]]:
+        """Probe SRT source directly without starting multicast"""
+        if not shutil.which("tsanalyze"):
+            self.log("error", "tsanalyze not found. Install TSDuck.", channel["id"])
+            return None
+        
+        srt_input = channel["srt_input"]
+        channel_id = channel["id"]
+        temp_file = f"/tmp/probe_{channel_id}.ts"
+        
+        self.log("info", f"Probing SRT stream: {srt_input}", channel_id)
+        
+        try:
+            # Capture 5-8 seconds of TS data to temp file
+            # Using timeout to limit capture duration
+            cmd = ["timeout", "8", "srt-live-transmit", srt_input, f"file://{temp_file}", "-v"]
+            
+            self.log("debug", f"Running: {' '.join(cmd)}", channel_id)
+            
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
+            
+            # Check if we got any data
+            if not os.path.exists(temp_file):
+                self.log("warn", "No data captured from SRT source", channel_id)
+                return None
+            
+            file_size = os.path.getsize(temp_file)
+            if file_size < 1000:  # Less than 1KB
+                self.log("warn", f"Insufficient data captured ({file_size} bytes)", channel_id)
+                return None
+            
+            self.log("debug", f"Captured {file_size} bytes, analyzing...", channel_id)
+            
+            # Analyze captured data
+            result = subprocess.run(
+                ["tsanalyze", temp_file, "--json"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                self.log("warn", f"tsanalyze failed: {result.stderr}", channel_id)
+                return None
+            
+            ts_info = self._parse_ts_json(result.stdout)
+            if ts_info:
+                self.log("info", f"Probe complete: {len(ts_info.get('video', []))} video, {len(ts_info.get('audio', []))} audio PIDs", channel_id)
+            return ts_info
+            
+        except subprocess.TimeoutExpired:
+            self.log("warn", "SRT probe timed out - check source availability", channel_id)
+            return None
+        except FileNotFoundError as e:
+            self.log("error", f"Required tool not found: {e}", channel_id)
+            return None
+        except Exception as e:
+            self.log("error", f"Probe failed: {e}", channel_id)
+            return None
+        finally:
+            # Cleanup temp file
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+    
+    def _parse_ts_json(self, json_str: str) -> Optional[Dict[str, Any]]:
+        """Parse tsanalyze JSON output into our ts_info format"""
+        try:
+            data = json.loads(json_str)
             
             ts_info = {
                 "video": [],
@@ -352,7 +438,6 @@ class StreamingAgent:
                     height = pid_info.get("height")
                     resolution = None
                     if width and height:
-                        # Format as standard resolution name or WxH
                         if height == 2160:
                             resolution = "4K"
                         elif height == 1080:
@@ -399,17 +484,11 @@ class StreamingAgent:
             # Get total bitrate
             ts_info["total_bitrate"] = data.get("ts-bitrate")
             
-            self.log("debug", f"TS analysis: {json.dumps(ts_info)}")
             return ts_info
             
-        except subprocess.TimeoutExpired:
-            self.log("debug", "TS analysis timed out")
-            return None
         except json.JSONDecodeError:
-            self.log("debug", "Failed to parse TS analysis output")
             return None
-        except Exception as e:
-            self.log("debug", f"TS analysis failed: {e}")
+        except Exception:
             return None
     
     def _stop_channel(self, channel_id: str, graceful: bool = True) -> bool:
@@ -536,6 +615,28 @@ class StreamingAgent:
                     "stats": self.get_system_stats()
                 }
                 success = True
+            
+            elif cmd_type == "probe_stream":
+                # Probe SRT input to get TS info before starting
+                ch_result = self.supabase.table("channels")\
+                    .select("*")\
+                    .eq("id", channel_id)\
+                    .single()\
+                    .execute()
+                
+                if ch_result.data:
+                    ts_info = self._probe_srt_stream(ch_result.data)
+                    if ts_info:
+                        self.supabase.table("channels").update({
+                            "ts_info": ts_info,
+                            "ts_analyzed_at": datetime.now(timezone.utc).isoformat()
+                        }).eq("id", channel_id).execute()
+                        success = True
+                        result = ts_info
+                    else:
+                        error_msg = "Failed to analyze stream - check SRT source connection"
+                else:
+                    error_msg = "Channel not found"
                 
             else:
                 error_msg = f"Unknown command type: {cmd_type}"
