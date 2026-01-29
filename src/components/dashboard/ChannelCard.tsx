@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { Channel, Recording } from '@/types/streaming';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2, Activity, AlertCircle, Pencil, Search, Play, Square, Circle, HardDrive, Clock } from 'lucide-react';
+import { Trash2, Activity, Pencil, Play, Square, Circle, HardDrive, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EditChannelDialog } from './EditChannelDialog';
 import { StreamInfoPanel } from './StreamInfoPanel';
+import { ChannelStreamInfo } from './ChannelStreamInfo';
+import { useLatestProbeCommand } from '@/hooks/useLatestProbeCommand';
 
 interface ChannelCardProps {
   channel: Channel;
@@ -45,6 +47,7 @@ export function ChannelCard({
   isEditLoading
 }: ChannelCardProps) {
   const [editOpen, setEditOpen] = useState(false);
+  const { data: latestProbeCommand } = useLatestProbeCommand(channel.id);
 
   const formatUptime = (seconds: number | null) => {
     if (!seconds) return '--:--:--';
@@ -143,34 +146,14 @@ export function ChannelCard({
         {/* Probe / TS Info Summary */}
         <div className="flex flex-col gap-0.5 min-w-[140px]">
           <span className="text-[10px] uppercase text-muted-foreground">Stream Info</span>
-          {isProbing ? (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-primary/10 animate-pulse">
-                <Search className="h-3 w-3 text-primary animate-pulse" />
-                <span className="text-xs text-primary font-medium">Probing...</span>
-              </div>
-            </div>
-          ) : hasTsInfo ? (
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[10px] font-normal">
-                {channel.ts_info?.video?.length || 0}V / {channel.ts_info?.audio?.length || 0}A
-              </Badge>
-              <span className="text-[10px] text-muted-foreground truncate max-w-[100px]">
-                {channel.ts_info?.service_name || 'Unknown'}
-              </span>
-            </div>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onProbe}
-              disabled={isRunning}
-              className="h-6 text-xs"
-            >
-              <Search className="h-3 w-3 mr-1" />
-              Probe
-            </Button>
-          )}
+          <ChannelStreamInfo
+            tsInfo={channel.ts_info}
+            isProbing={!!isProbing}
+            isRunning={isRunning}
+            probeStatus={latestProbeCommand?.status}
+            probeError={latestProbeCommand?.error_message}
+            onProbe={onProbe}
+          />
         </div>
 
         {/* Multicast Output */}
