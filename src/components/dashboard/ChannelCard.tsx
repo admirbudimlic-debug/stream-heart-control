@@ -143,7 +143,14 @@ export function ChannelCard({
         {/* Probe / TS Info Summary */}
         <div className="flex flex-col gap-0.5 min-w-[140px]">
           <span className="text-[10px] uppercase text-muted-foreground">Stream Info</span>
-          {hasTsInfo ? (
+          {isProbing ? (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-primary/10 animate-pulse">
+                <Search className="h-3 w-3 text-primary animate-pulse" />
+                <span className="text-xs text-primary font-medium">Probing...</span>
+              </div>
+            </div>
+          ) : hasTsInfo ? (
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-[10px] font-normal">
                 {channel.ts_info?.video?.length || 0}V / {channel.ts_info?.audio?.length || 0}A
@@ -157,11 +164,11 @@ export function ChannelCard({
               variant="outline"
               size="sm"
               onClick={onProbe}
-              disabled={isProbing || isRunning}
+              disabled={isRunning}
               className="h-6 text-xs"
             >
               <Search className="h-3 w-3 mr-1" />
-              {isProbing ? 'Probing...' : 'Probe'}
+              Probe
             </Button>
           )}
         </div>
@@ -208,8 +215,8 @@ export function ChannelCard({
               variant="default"
               size="sm"
               onClick={onStart}
-              disabled={isLoading || isTransitioning || !hasTsInfo}
-              title={!hasTsInfo ? "Probe stream first" : "Start multicast"}
+              disabled={isLoading || isTransitioning || isProbing}
+              title={!hasTsInfo ? "Start multicast (full stream passthrough)" : "Start multicast"}
               className="h-7"
             >
               <Play className="h-3 w-3 mr-1" />
