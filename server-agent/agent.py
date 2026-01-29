@@ -336,25 +336,48 @@ class StreamingAgent:
         self.log("info", f"Probing SRT stream: {srt_input}", channel_id)
         
         try:
-            # Capture 5-8 seconds of TS data to temp file
-            # Using timeout to limit capture duration
-            cmd = ["timeout", "8", "srt-live-transmit", srt_input, f"file://{temp_file}", "-v"]
+            # Remove any existing temp file
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
             
-            self.log("debug", f"Running: {' '.join(cmd)}", channel_id)
+            # Use Popen to start capture, then wait with timeout
+            # This is more reliable than subprocess.run with external timeout
+            cmd = ["srt-live-transmit", srt_input, f"file://{temp_file}", "-v"]
             
-            proc = subprocess.run(
+            self.log("debug", f"Running capture: {' '.join(cmd)}", channel_id)
+            
+            proc = subprocess.Popen(
                 cmd,
-                capture_output=True,
-                text=True,
-                timeout=15
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
             )
+            
+            # Wait for capture (8 seconds of data)
+            try:
+                # Let it run for 8 seconds to capture enough data
+                time.sleep(8)
+            finally:
+                # Terminate the process
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+            
+            # Give filesystem time to flush
+            time.sleep(0.5)
             
             # Check if we got any data
             if not os.path.exists(temp_file):
-                self.log("warn", "No data captured from SRT source", channel_id)
+                # Also check stderr for connection issues
+                self.log("warn", "No data captured from SRT source - file not created", channel_id)
                 return None
             
             file_size = os.path.getsize(temp_file)
+            self.log("debug", f"Captured file size: {file_size} bytes", channel_id)
+            
             if file_size < 1000:  # Less than 1KB
                 self.log("warn", f"Insufficient data captured ({file_size} bytes)", channel_id)
                 return None
@@ -378,9 +401,6 @@ class StreamingAgent:
                 self.log("info", f"Probe complete: {len(ts_info.get('video', []))} video, {len(ts_info.get('audio', []))} audio PIDs", channel_id)
             return ts_info
             
-        except subprocess.TimeoutExpired:
-            self.log("warn", "SRT probe timed out - check source availability", channel_id)
-            return None
         except FileNotFoundError as e:
             self.log("error", f"Required tool not found: {e}", channel_id)
             return None
